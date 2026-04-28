@@ -13,6 +13,7 @@ import {
   createOpenAICompatibleProvider,
   createScriptedProvider,
 } from "../src/providers.mjs";
+import { formatRunDetail, formatRunList, getRun, listRuns } from "../src/runs.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
 import { createCodexWorkerProvider } from "../src/workers.mjs";
 
@@ -22,12 +23,16 @@ Commands:
   doctor [--config path]       Check local OpenHarness readiness
   demo                         Run a local scripted harness task
   run <goal> [--config path]   Run a goal through a configured provider
+  runs [--json] [--log path]   List runs from the audit log
+  show <run-id> [--json]       Show one run and its event timeline
   log <path>                   Pretty-print a JSONL audit log
   --help                       Show this help text
 
 Options:
   --provider <name>            Override config provider: scripted, openai-compatible, ollama, codex-worker
   --config <path>              Load OpenHarness JSON config
+  --log <path>                 Read a specific JSONL audit log
+  --json                       Emit machine-readable JSON
 `;
 
 const command = process.argv[2] ?? "--help";
@@ -81,6 +86,7 @@ if (command === "demo") {
   });
 
   process.stdout.write(`status: ${result.status}\n`);
+  process.stdout.write(`run: ${result.taskId}\n`);
   process.stdout.write(`provider: ${result.providerId}\n`);
   process.stdout.write(`final: ${result.final}\n`);
   process.stdout.write(`event log: ${logPath}\n`);
@@ -120,10 +126,48 @@ if (command === "run") {
         });
 
   process.stdout.write(`status: ${result.status}\n`);
+  process.stdout.write(`run: ${result.taskId}\n`);
   process.stdout.write(`provider: ${result.providerId ?? result.workerId}\n`);
   process.stdout.write(`final: ${result.final}\n`);
   process.stdout.write(`event log: ${logPath}\n`);
   process.exit(result.status === "done" ? 0 : 1);
+}
+
+if (command === "runs") {
+  const parsed = parseLogViewArgs(process.argv.slice(3));
+  const runs = await listRuns(parsed.logPath ?? defaultLogPath());
+
+  if (parsed.json) {
+    process.stdout.write(`${JSON.stringify({ runs }, null, 2)}\n`);
+  } else {
+    process.stdout.write(formatRunList(runs));
+  }
+
+  process.exit(0);
+}
+
+if (command === "show") {
+  const parsed = parseLogViewArgs(process.argv.slice(3));
+  const runId = parsed.positionals[0];
+  if (!runId) {
+    process.stderr.write("Missing run id for show command\n\n");
+    process.stderr.write(HELP);
+    process.exit(1);
+  }
+
+  const run = await getRun(parsed.logPath ?? defaultLogPath(), runId);
+  if (!run) {
+    process.stderr.write(`Run not found: ${runId}\n`);
+    process.exit(1);
+  }
+
+  if (parsed.json) {
+    process.stdout.write(`${JSON.stringify({ run }, null, 2)}\n`);
+  } else {
+    process.stdout.write(formatRunDetail(run));
+  }
+
+  process.exit(0);
 }
 
 if (command === "log") {
@@ -180,6 +224,28 @@ function parseOptionArgs(args) {
   }
 
   return options;
+}
+
+function parseLogViewArgs(args) {
+  const options = { json: false, positionals: [] };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--log") {
+      options.logPath = args[index + 1];
+      index += 1;
+    } else if (value === "--json") {
+      options.json = true;
+    } else {
+      options.positionals.push(value);
+    }
+  }
+
+  return options;
+}
+
+function defaultLogPath() {
+  return join(process.cwd(), ".openharness-events.jsonl");
 }
 
 function createProvider(providerName, config, goal) {

@@ -16,6 +16,8 @@ test("CLI prints help", async () => {
   assert.match(result.stdout, /doctor/);
   assert.match(result.stdout, /run <goal>/);
   assert.match(result.stdout, /log <path>/);
+  assert.match(result.stdout, /runs/);
+  assert.match(result.stdout, /show <run-id>/);
   assert.match(result.stdout, /--config/);
   assert.match(result.stdout, /scripted, openai-compatible, ollama, codex-worker/);
 });
@@ -48,6 +50,7 @@ test("CLI run executes a goal with the scripted provider", async () => {
 
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /status: done/);
+  assert.match(result.stdout, /run: /);
   assert.match(result.stdout, /provider: cli:scripted/);
   assert.match(result.stdout, /final: Scripted provider received: inspect the repo/);
 });
@@ -69,6 +72,104 @@ test("CLI log pretty-prints an audit log", async () => {
 
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /system task.done status=done/);
+});
+
+test("CLI runs lists run summaries from an audit log", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-cli-runs-"));
+  const logPath = join(dir, "events.jsonl");
+  await appendEvent(
+    logPath,
+    createEvent({
+      taskId: "run-1",
+      actor: "user",
+      type: "task.created",
+      data: { goal: "inspect README", providerId: "scripted" },
+    }),
+  );
+  await appendEvent(
+    logPath,
+    createEvent({
+      taskId: "run-1",
+      actor: "system",
+      type: "task.done",
+      data: { status: "done" },
+    }),
+  );
+
+  const result = await runNode(["bin/harness.mjs", "runs", "--log", logPath]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /run-1/);
+  assert.match(result.stdout, /done/);
+  assert.match(result.stdout, /inspect README/);
+});
+
+test("CLI runs emits JSON for UI consumers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-cli-runs-json-"));
+  const logPath = join(dir, "events.jsonl");
+  await appendEvent(
+    logPath,
+    createEvent({
+      taskId: "run-1",
+      actor: "user",
+      type: "task.created",
+      data: { goal: "inspect README", providerId: "scripted" },
+    }),
+  );
+
+  const result = await runNode([
+    "bin/harness.mjs",
+    "runs",
+    "--log",
+    logPath,
+    "--json",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.runs[0].runId, "run-1");
+  assert.equal(body.runs[0].goal, "inspect README");
+});
+
+test("CLI show emits one run with its full event timeline", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-cli-show-"));
+  const logPath = join(dir, "events.jsonl");
+  await appendEvent(
+    logPath,
+    createEvent({
+      taskId: "run-1",
+      actor: "user",
+      type: "task.created",
+      data: { goal: "inspect README", workerId: "codex-worker" },
+    }),
+  );
+  await appendEvent(
+    logPath,
+    createEvent({
+      taskId: "run-1",
+      actor: "worker",
+      type: "worker.finished",
+      data: {
+        workerId: "codex-worker",
+        result: { exitCode: 0, output: "README summary" },
+      },
+    }),
+  );
+
+  const result = await runNode([
+    "bin/harness.mjs",
+    "show",
+    "run-1",
+    "--log",
+    logPath,
+    "--json",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  const body = JSON.parse(result.stdout);
+  assert.equal(body.run.runId, "run-1");
+  assert.equal(body.run.final, "README summary");
+  assert.equal(body.run.events.length, 2);
 });
 
 function runNode(args) {

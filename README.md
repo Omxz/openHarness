@@ -18,6 +18,8 @@ npm test
 npm run demo
 node bin/harness.mjs doctor
 node bin/harness.mjs run "inspect this repo" --provider scripted
+node bin/harness.mjs runs
+node bin/harness.mjs show <run-id>
 node bin/harness.mjs log .openharness-events.jsonl
 ```
 
@@ -105,6 +107,23 @@ Use `log` to pretty-print the JSONL audit trail:
 node bin/harness.mjs log .openharness-events.jsonl
 ```
 
+Use `runs` for a UI-friendly summary grouped by run ID:
+
+```bash
+node bin/harness.mjs runs
+node bin/harness.mjs runs --json
+```
+
+Use `show` to inspect one run and its full event timeline:
+
+```bash
+node bin/harness.mjs show <run-id>
+node bin/harness.mjs show <run-id> --json
+```
+
+The JSON commands are intended for local dashboards and other UI clients. The
+JSONL audit log remains the source of truth.
+
 ## Approval Policy
 
 OpenHarness records every tool decision in the audit log as `approval.decided`.
@@ -124,6 +143,7 @@ The CLI currently runs without an interactive approval prompt, so risky model to
 - `src/tools.mjs`: read, list, and approval-gated shell tools.
 - `src/policy.mjs`: workspace and tool-risk policy checks.
 - `src/audit-log.mjs`: JSONL event logging.
+- `src/runs.mjs`: JSONL-backed run summaries for UI clients.
 - `src/verifier.mjs`: command-based verification.
 
 ## Next Provider Targets

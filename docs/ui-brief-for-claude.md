@@ -67,12 +67,48 @@ Good references:
 The current implementation includes:
 
 - `src/kernel.mjs`: orchestration loop.
-- `src/providers.mjs`: provider abstraction and scripted provider.
+- `src/providers.mjs`: provider abstraction, scripted provider, OpenAI-compatible provider, and Ollama provider.
 - `src/tools.mjs`: read/list/shell tools.
 - `src/policy.mjs`: workspace and approval policy.
 - `src/audit-log.mjs`: JSONL audit log.
+- `src/runs.mjs`: JSONL-backed run summaries and run details.
 - `src/verifier.mjs`: command verifier.
 - `bin/harness.mjs`: CLI demo.
+- `src/workers.mjs`: Codex CLI worker delegation for signed-in Codex subscription environments.
 
-The UI does not need to be built yet. The next backend steps are real provider adapters for OpenAI-compatible APIs and Ollama.
+## Current CLI Contract For UI Prototypes
 
+Use the JSON commands instead of parsing raw JSONL in the UI:
+
+```bash
+node bin/harness.mjs runs --json
+node bin/harness.mjs show <run-id> --json
+```
+
+`runs --json` returns:
+
+```json
+{
+  "runs": [
+    {
+      "runId": "uuid-or-test-id",
+      "goal": "inspect README",
+      "providerId": "cli:scripted",
+      "workerId": null,
+      "status": "done",
+      "createdAt": "2026-04-28T10:00:00.000Z",
+      "completedAt": "2026-04-28T10:00:03.000Z",
+      "durationMs": 3000,
+      "final": "Final model or worker output",
+      "verification": { "exitCode": 0 },
+      "eventCount": 4
+    }
+  ]
+}
+```
+
+`show <run-id> --json` returns the same run summary plus the raw `events`
+array for the inspector and timeline.
+
+The JSONL audit log remains the source of truth. These commands are a stable
+read model for early UI work.
