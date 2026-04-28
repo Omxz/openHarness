@@ -70,6 +70,53 @@ export function createOpenAICompatibleProvider({
   };
 }
 
+export function createOllamaProvider({
+  id = "ollama",
+  baseUrl = "http://127.0.0.1:11434",
+  model,
+  fetchImpl = fetch,
+}) {
+  if (!model) {
+    throw new Error("Ollama provider requires a model");
+  }
+
+  return {
+    id,
+    capabilities: {
+      chat: true,
+      toolCalling: false,
+      vision: false,
+      embeddings: false,
+      jsonMode: true,
+      streaming: false,
+      contextWindow: 8192,
+    },
+    async complete(request) {
+      const response = await fetchImpl(`${trimSlash(baseUrl)}/api/chat`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          stream: false,
+          format: "json",
+          messages: buildMessages(request),
+        }),
+      });
+
+      const body = await readJson(response);
+      if (!response.ok) {
+        throw new Error(
+          `Ollama provider failed with ${response.status}: ${extractErrorMessage(body)}`,
+        );
+      }
+
+      return normalizeJsonContent(body.message?.content, "Ollama provider");
+    },
+  };
+}
+
 function buildMessages({ task, transcript, tools }) {
   const toolNames = Object.keys(tools ?? {});
   return [
@@ -112,6 +159,14 @@ function normalizeModelResponse(body) {
     throw new Error("OpenAI-compatible provider response did not include message content");
   }
 
+  return normalizeJsonContent(content, "OpenAI-compatible provider");
+}
+
+function normalizeJsonContent(content, providerName) {
+  if (!content) {
+    throw new Error(`${providerName} response did not include message content`);
+  }
+
   const parsed = JSON.parse(content);
   if (parsed.type === "final" && typeof parsed.content === "string") {
     return {
@@ -128,10 +183,14 @@ function normalizeModelResponse(body) {
     };
   }
 
-  throw new Error(`Unsupported OpenAI-compatible response type "${parsed.type}"`);
+  throw new Error(`Unsupported ${providerName} response type "${parsed.type}"`);
 }
 
 function extractErrorMessage(body) {
+  if (typeof body.error === "string") {
+    return body.error;
+  }
+
   return body.error?.message ?? body.message ?? JSON.stringify(body);
 }
 

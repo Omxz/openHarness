@@ -15,6 +15,12 @@ test("normalizeConfig provides safe defaults without API keys", () => {
   assert.equal(config.providers["openai-compatible"].baseUrl, "https://api.openai.com/v1");
   assert.equal(config.providers["openai-compatible"].model, "gpt-4.1-mini");
   assert.equal(config.providers["openai-compatible"].apiKey, undefined);
+  assert.deepEqual(config.providers.ollama, {
+    type: "ollama",
+    id: "ollama",
+    baseUrl: "http://127.0.0.1:11434",
+    model: "llama3.2",
+  });
 });
 
 test("loadConfig reads JSON config and resolves provider API keys from env", async () => {
@@ -53,6 +59,40 @@ test("loadConfig reads JSON config and resolves provider API keys from env", asy
     model: "test-model",
     apiKeyEnv: "TEST_OPENAI_KEY",
     apiKey: "secret-key",
+  });
+});
+
+test("loadConfig reads explicit Ollama config", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-ollama-config-"));
+  const configPath = join(dir, "openharness.json");
+  await writeFile(
+    configPath,
+    JSON.stringify(
+      {
+        provider: "ollama",
+        privacyMode: "local-only",
+        providers: {
+          ollama: {
+            baseUrl: "http://localhost:11435",
+            model: "qwen2.5-coder:7b",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  const config = await loadConfig(configPath, { env: {} });
+
+  assert.equal(config.provider, "ollama");
+  assert.equal(config.privacyMode, "local-only");
+  assert.deepEqual(config.providers.ollama, {
+    type: "ollama",
+    id: "ollama",
+    baseUrl: "http://localhost:11435",
+    model: "qwen2.5-coder:7b",
   });
 });
 

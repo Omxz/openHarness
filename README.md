@@ -45,6 +45,21 @@ Run with:
 node bin/harness.mjs run "summarize README" --config openharness.json
 ```
 
+For local-only Ollama usage:
+
+```json
+{
+  "provider": "ollama",
+  "privacyMode": "local-only",
+  "providers": {
+    "ollama": {
+      "baseUrl": "http://127.0.0.1:11434",
+      "model": "llama3.2"
+    }
+  }
+}
+```
+
 ## Current Pieces
 
 - `src/kernel.mjs`: task orchestration loop.

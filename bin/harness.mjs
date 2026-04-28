@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { loadConfig, normalizeConfig } from "../src/config.mjs";
 import { runTask } from "../src/kernel.mjs";
 import {
+  createOllamaProvider,
   createOpenAICompatibleProvider,
   createScriptedProvider,
 } from "../src/providers.mjs";
@@ -20,7 +21,7 @@ Commands:
   --help                       Show this help text
 
 Options:
-  --provider <name>            Override config provider: scripted, openai-compatible
+  --provider <name>            Override config provider: scripted, openai-compatible, ollama
   --config <path>              Load OpenHarness JSON config
 `;
 
@@ -146,6 +147,10 @@ function createProvider(providerName, config, goal) {
 
   if (providerName === "openai-compatible") {
     return createOpenAICompatibleProvider(config.providers["openai-compatible"]);
+  }
+
+  if (providerName === "ollama") {
+    return createOllamaProvider(config.providers.ollama);
   }
 
   throw new Error(`Unsupported provider "${providerName}"`);
