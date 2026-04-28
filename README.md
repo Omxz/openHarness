@@ -16,7 +16,9 @@ The initial goal is a working kernel loop:
 ```bash
 npm test
 npm run demo
+node bin/harness.mjs doctor
 node bin/harness.mjs run "inspect this repo" --provider scripted
+node bin/harness.mjs log .openharness-events.jsonl
 ```
 
 The demo uses a scripted local provider, so it does not need API keys or a local model server yet.
@@ -89,6 +91,20 @@ Run with:
 
 ```bash
 node bin/harness.mjs run "inspect README" --provider codex-worker
+```
+
+## Inspecting A Run
+
+Use `doctor` to check local readiness:
+
+```bash
+node bin/harness.mjs doctor --config openharness.json
+```
+
+Use `log` to pretty-print the JSONL audit trail:
+
+```bash
+node bin/harness.mjs log .openharness-events.jsonl
 ```
 
 ## Current Pieces

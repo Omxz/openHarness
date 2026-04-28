@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig, normalizeConfig } from "../src/config.mjs";
+import { formatDoctorReport, runDoctor } from "../src/doctor.mjs";
 import { runTask, runWorkerTask } from "../src/kernel.mjs";
+import { formatLogFile } from "../src/log-viewer.mjs";
 import {
   createOllamaProvider,
   createOpenAICompatibleProvider,
@@ -17,8 +19,10 @@ import { createCodexWorkerProvider } from "../src/workers.mjs";
 const HELP = `Usage: harness <command>
 
 Commands:
+  doctor [--config path]       Check local OpenHarness readiness
   demo                         Run a local scripted harness task
   run <goal> [--config path]   Run a goal through a configured provider
+  log <path>                   Pretty-print a JSONL audit log
   --help                       Show this help text
 
 Options:
@@ -30,6 +34,16 @@ const command = process.argv[2] ?? "--help";
 
 if (command === "--help" || command === "-h") {
   process.stdout.write(HELP);
+  process.exit(0);
+}
+
+if (command === "doctor") {
+  const parsed = parseOptionArgs(process.argv.slice(3));
+  const checks = await runDoctor({
+    workspace: process.cwd(),
+    configPath: parsed.configPath,
+  });
+  process.stdout.write(formatDoctorReport(checks));
   process.exit(0);
 }
 
@@ -112,6 +126,18 @@ if (command === "run") {
   process.exit(result.status === "done" ? 0 : 1);
 }
 
+if (command === "log") {
+  const logPath = process.argv[3];
+  if (!logPath) {
+    process.stderr.write("Missing log path\n\n");
+    process.stderr.write(HELP);
+    process.exit(1);
+  }
+
+  process.stdout.write(await formatLogFile(logPath));
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
 process.exit(1);
 
@@ -140,6 +166,20 @@ function parseRunArgs(args) {
   }
 
   return { ...options, goal };
+}
+
+function parseOptionArgs(args) {
+  const options = {};
+
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--config") {
+      options.configPath = args[index + 1];
+      index += 1;
+    }
+  }
+
+  return options;
 }
 
 function createProvider(providerName, config, goal) {
