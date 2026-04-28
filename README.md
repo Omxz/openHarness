@@ -78,8 +78,6 @@ For Codex subscription delegation through a signed-in Codex CLI:
         "never",
         "--sandbox",
         "workspace-write",
-        "--ask-for-approval",
-        "never",
         "--skip-git-repo-check"
       ]
     }

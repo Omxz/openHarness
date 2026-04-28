@@ -32,8 +32,6 @@ test("normalizeConfig provides safe defaults without API keys", () => {
       "never",
       "--sandbox",
       "workspace-write",
-      "--ask-for-approval",
-      "never",
       "--skip-git-repo-check",
     ],
   });

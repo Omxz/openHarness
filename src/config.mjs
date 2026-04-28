@@ -11,8 +11,6 @@ const DEFAULT_CODEX_WORKER_ARGS = Object.freeze([
   "never",
   "--sandbox",
   "workspace-write",
-  "--ask-for-approval",
-  "never",
   "--skip-git-repo-check",
 ]);
 

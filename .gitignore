@@ -4,3 +4,4 @@ npm-debug.log*
 coverage/
 *.log
 .openharness-events.jsonl
+openharness.local.json
