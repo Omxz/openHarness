@@ -13,6 +13,13 @@ const DEFAULT_CODEX_WORKER_ARGS = Object.freeze([
   "workspace-write",
   "--skip-git-repo-check",
 ]);
+const DEFAULT_CLAUDE_WORKER_ARGS = Object.freeze([
+  "-p",
+  "--output-format",
+  "text",
+  "--permission-mode",
+  "dontAsk",
+]);
 
 export async function loadConfig(configPath, { env = process.env } = {}) {
   const raw = JSON.parse(await readFile(configPath, "utf8"));
@@ -28,6 +35,7 @@ export function normalizeConfig(raw = {}, { env = process.env } = {}) {
   );
   const ollama = normalizeOllamaProvider(rawProviders.ollama ?? {}, env);
   const codexWorker = normalizeCodexWorker(rawWorkers["codex-worker"] ?? {});
+  const claudeWorker = normalizeClaudeWorker(rawWorkers["claude-worker"] ?? {});
 
   return {
     provider: raw.provider ?? "scripted",
@@ -40,6 +48,7 @@ export function normalizeConfig(raw = {}, { env = process.env } = {}) {
     workers: {
       ...rawWorkers,
       "codex-worker": codexWorker,
+      "claude-worker": claudeWorker,
     },
   };
 }
@@ -92,5 +101,16 @@ function normalizeCodexWorker(rawWorker) {
     args: rawWorker.args ?? [...DEFAULT_CODEX_WORKER_ARGS],
     ...(rawWorker.model ? { model: rawWorker.model } : {}),
     ...(rawWorker.profile ? { profile: rawWorker.profile } : {}),
+  };
+}
+
+function normalizeClaudeWorker(rawWorker) {
+  return {
+    type: "claude-worker",
+    id: rawWorker.id ?? "claude-worker",
+    command: rawWorker.command ?? "claude",
+    args: rawWorker.args ?? [...DEFAULT_CLAUDE_WORKER_ARGS],
+    ...(rawWorker.model ? { model: rawWorker.model } : {}),
+    ...(rawWorker.permissionMode ? { permissionMode: rawWorker.permissionMode } : {}),
   };
 }

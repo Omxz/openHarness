@@ -1,7 +1,11 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { loadConfig } from "./config.mjs";
-import { detectCodexWorker } from "./workers.mjs";
+import {
+  detectClaudeAuth,
+  detectClaudeWorker,
+  detectCodexWorker,
+} from "./workers.mjs";
 
 export async function runDoctor({
   workspace = process.cwd(),
@@ -11,6 +15,8 @@ export async function runDoctor({
   nodeVersion = process.version,
   checkOllama = defaultCheckOllama,
   checkCodex = detectCodexWorker,
+  checkClaude = detectClaudeWorker,
+  checkClaudeAuth = detectClaudeAuth,
 } = {}) {
   const checks = [];
 
@@ -41,6 +47,20 @@ export async function runDoctor({
     name: "codex",
     ok: codex.available,
     detail: codex.detail || `${codex.command} unavailable`,
+  });
+
+  const claude = await checkClaude();
+  checks.push({
+    name: "claude",
+    ok: claude.available,
+    detail: claude.detail || `${claude.command} unavailable`,
+  });
+
+  const claudeAuth = await checkClaudeAuth();
+  checks.push({
+    name: "claude-auth",
+    ok: claudeAuth.available,
+    detail: claudeAuth.detail || `${claudeAuth.command} auth unavailable`,
   });
 
   checks.push(await existsCheck("git", join(workspace, ".git")));

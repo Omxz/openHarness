@@ -10,8 +10,6 @@ export function createCodexWorkerProvider({
     "never",
     "--sandbox",
     "workspace-write",
-    "--ask-for-approval",
-    "never",
     "--skip-git-repo-check",
   ],
   model,
@@ -54,6 +52,47 @@ export function createCodexWorkerProvider({
   };
 }
 
+export function createClaudeWorkerProvider({
+  id = "claude-worker",
+  command = "claude",
+  args = ["-p", "--output-format", "text", "--permission-mode", "dontAsk"],
+  model,
+  permissionMode,
+  runProcess: processRunner = runProcess,
+} = {}) {
+  return {
+    id,
+    capabilities: {
+      delegatedTasks: true,
+      usesSubscriptionAuth: true,
+      rawCompletion: false,
+    },
+    async runTask({ task }) {
+      const prompt = buildClaudePrompt(task);
+      const finalArgs = [
+        ...args,
+        ...(model ? ["--model", model] : []),
+        ...(permissionMode ? ["--permission-mode", permissionMode] : []),
+        prompt,
+      ];
+      const result = await processRunner(command, finalArgs, {
+        cwd: task.workspace,
+      });
+      const output = (result.stdout || result.stderr || "").trim();
+
+      return {
+        workerId: id,
+        command,
+        args: finalArgs,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        output,
+      };
+    },
+  };
+}
+
 export async function detectCodexWorker({
   command = "codex",
   runProcess: processRunner = runProcess,
@@ -65,6 +104,45 @@ export async function detectCodexWorker({
     available: result.exitCode === 0,
     command,
     detail,
+  };
+}
+
+export async function detectClaudeWorker({
+  command = "claude",
+  runProcess: processRunner = runProcess,
+} = {}) {
+  const result = await processRunner(command, ["--version"], { cwd: process.cwd() });
+  const detail = (result.stdout || result.stderr || "").trim();
+
+  return {
+    available: result.exitCode === 0,
+    command,
+    detail,
+  };
+}
+
+export async function detectClaudeAuth({
+  command = "claude",
+  runProcess: processRunner = runProcess,
+} = {}) {
+  const result = await processRunner(command, ["auth", "status"], {
+    cwd: process.cwd(),
+  });
+  const detail = (result.stdout || result.stderr || "").trim();
+  const status = parseJson(detail);
+
+  if (status?.loggedIn) {
+    return {
+      available: true,
+      command,
+      detail: `logged in via ${status.authMethod ?? "unknown auth"}`,
+    };
+  }
+
+  return {
+    available: false,
+    command,
+    detail: status ? "not logged in" : detail || `${command} auth status unavailable`,
   };
 }
 
@@ -111,4 +189,25 @@ function buildCodexPrompt(task) {
     "",
     "Work only inside the scoped workspace. Return a concise final summary of what happened.",
   ].join("\n");
+}
+
+function buildClaudePrompt(task) {
+  return [
+    "OpenHarness delegated task",
+    "",
+    `Task id: ${task.id}`,
+    `Goal: ${task.goal}`,
+    `Workspace: ${task.workspace}`,
+    `Privacy mode: ${task.privacyMode}`,
+    "",
+    "Work only inside the scoped workspace. Return a concise final summary of what happened.",
+  ].join("\n");
+}
+
+function parseJson(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }

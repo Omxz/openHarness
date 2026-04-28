@@ -34,6 +34,16 @@ test("runDoctor reports local readiness checks", async () => {
       command: "codex",
       detail: "codex-cli 1.0.0",
     }),
+    checkClaude: async () => ({
+      available: true,
+      command: "claude",
+      detail: "1.2.3",
+    }),
+    checkClaudeAuth: async () => ({
+      available: true,
+      command: "claude",
+      detail: "logged in via subscription",
+    }),
     nodeVersion: "v20.19.0",
   });
 
@@ -43,6 +53,8 @@ test("runDoctor reports local readiness checks", async () => {
     ["openai-key", true],
     ["ollama", true],
     ["codex", true],
+    ["claude", true],
+    ["claude-auth", true],
     ["git", true],
     ["audit-log", true],
   ]);

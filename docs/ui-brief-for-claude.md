@@ -74,7 +74,8 @@ The current implementation includes:
 - `src/runs.mjs`: JSONL-backed run summaries and run details.
 - `src/verifier.mjs`: command verifier.
 - `bin/harness.mjs`: CLI demo.
-- `src/workers.mjs`: Codex CLI worker delegation for signed-in Codex subscription environments.
+- `src/workers.mjs`: Codex and Claude CLI worker delegation for signed-in subscription environments.
+- `doctor`: reports both Claude CLI availability and Claude auth readiness as separate checks.
 
 ## Current CLI Contract For UI Prototypes
 

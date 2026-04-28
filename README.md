@@ -94,6 +94,48 @@ Run with:
 node bin/harness.mjs run "inspect README" --provider codex-worker
 ```
 
+For Claude subscription delegation through a signed-in Claude Code CLI:
+
+```json
+{
+  "provider": "claude-worker",
+  "privacyMode": "ask-before-api",
+  "workers": {
+    "claude-worker": {
+      "command": "claude",
+      "args": [
+        "-p",
+        "--output-format",
+        "text",
+        "--permission-mode",
+        "dontAsk"
+      ],
+      "model": "sonnet"
+    }
+  }
+}
+```
+
+Run with:
+
+```bash
+node bin/harness.mjs run "inspect README" --provider claude-worker
+```
+
+The Claude worker uses `claude -p` non-interactive print mode. The default
+permission mode is conservative so the worker does not hang waiting for terminal
+approval prompts.
+
+Check local Claude readiness with:
+
+```bash
+claude auth status
+node bin/harness.mjs doctor
+```
+
+If `claude-auth` is not ready, sign in with `claude auth login`. Subscription
+setups that need a long-lived token can run `claude setup-token`.
+
 ## Inspecting A Run
 
 Use `doctor` to check local readiness:
@@ -172,6 +214,7 @@ The CLI currently runs without an interactive approval prompt, so risky model to
 - `src/runs.mjs`: JSONL-backed run summaries for UI clients.
 - `src/server.mjs`: read-only local JSON API for UI clients.
 - `src/verifier.mjs`: command-based verification.
+- `src/workers.mjs`: subscription-backed CLI workers for Codex and Claude.
 
 ## Next Provider Targets
 

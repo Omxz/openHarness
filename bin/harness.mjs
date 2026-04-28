@@ -16,7 +16,10 @@ import {
 import { formatRunDetail, formatRunList, getRun, listRuns } from "../src/runs.mjs";
 import { startApiServer } from "../src/server.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
-import { createCodexWorkerProvider } from "../src/workers.mjs";
+import {
+  createClaudeWorkerProvider,
+  createCodexWorkerProvider,
+} from "../src/workers.mjs";
 
 const HELP = `Usage: harness <command>
 
@@ -31,7 +34,7 @@ Commands:
   --help                       Show this help text
 
 Options:
-  --provider <name>            Override config provider: scripted, openai-compatible, ollama, codex-worker
+  --provider <name>            Override config provider: scripted, openai-compatible, ollama, codex-worker, claude-worker
   --config <path>              Load OpenHarness JSON config
   --log <path>                 Read a specific JSONL audit log
   --host <host>                Host for serve (default: 127.0.0.1)
@@ -110,7 +113,7 @@ if (command === "run") {
     args: ["--version"],
   };
   const result =
-    providerName === "codex-worker"
+    isWorkerProvider(providerName)
       ? await runWorkerTask({
           goal: parsed.goal,
           workspace,
@@ -314,5 +317,13 @@ function createWorker(providerName, config) {
     return createCodexWorkerProvider(config.workers["codex-worker"]);
   }
 
+  if (providerName === "claude-worker") {
+    return createClaudeWorkerProvider(config.workers["claude-worker"]);
+  }
+
   throw new Error(`Unsupported worker "${providerName}"`);
+}
+
+function isWorkerProvider(providerName) {
+  return providerName === "codex-worker" || providerName === "claude-worker";
 }

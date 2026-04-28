@@ -35,6 +35,12 @@ test("normalizeConfig provides safe defaults without API keys", () => {
       "--skip-git-repo-check",
     ],
   });
+  assert.deepEqual(config.workers["claude-worker"], {
+    type: "claude-worker",
+    id: "claude-worker",
+    command: "claude",
+    args: ["-p", "--output-format", "text", "--permission-mode", "dontAsk"],
+  });
 });
 
 test("loadConfig reads JSON config and resolves provider API keys from env", async () => {
@@ -167,5 +173,41 @@ test("loadConfig reads explicit Codex worker config", async () => {
     args: ["exec", "--json", "--sandbox", "read-only"],
     model: "gpt-5.4",
     profile: "work",
+  });
+});
+
+test("loadConfig reads explicit Claude worker config", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-claude-config-"));
+  const configPath = join(dir, "openharness.json");
+  await writeFile(
+    configPath,
+    JSON.stringify(
+      {
+        provider: "claude-worker",
+        workers: {
+          "claude-worker": {
+            command: "/usr/local/bin/claude",
+            args: ["-p", "--output-format", "json"],
+            model: "sonnet",
+            permissionMode: "dontAsk",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  const config = await loadConfig(configPath, { env: {} });
+
+  assert.equal(config.provider, "claude-worker");
+  assert.deepEqual(config.workers["claude-worker"], {
+    type: "claude-worker",
+    id: "claude-worker",
+    command: "/usr/local/bin/claude",
+    args: ["-p", "--output-format", "json"],
+    model: "sonnet",
+    permissionMode: "dontAsk",
   });
 });
