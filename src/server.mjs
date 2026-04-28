@@ -32,13 +32,20 @@ export async function startApiServer({
   port = DEFAULT_PORT,
   logPath,
   uiDist = UI_DIST,
+  eventStreamPollMs = 1000,
 } = {}) {
   if (!logPath) {
     throw new Error("startApiServer requires logPath");
   }
 
   const server = createServer((request, response) => {
-    handleRequest({ request, response, logPath, uiDist }).catch((error) => {
+    handleRequest({
+      request,
+      response,
+      logPath,
+      uiDist,
+      eventStreamPollMs,
+    }).catch((error) => {
       sendJson(response, 500, {
         error: {
           code: "internal_error",
@@ -61,7 +68,13 @@ export async function startApiServer({
   };
 }
 
-async function handleRequest({ request, response, logPath, uiDist }) {
+async function handleRequest({
+  request,
+  response,
+  logPath,
+  uiDist,
+  eventStreamPollMs,
+}) {
   setCorsHeaders(response);
 
   if (request.method === "OPTIONS") {
@@ -93,6 +106,17 @@ async function handleRequest({ request, response, logPath, uiDist }) {
 
   if (url.pathname === "/api/runs") {
     sendJson(response, 200, { runs: await listRuns(logPath) });
+    return;
+  }
+
+  if (url.pathname === "/api/events/stream") {
+    await streamAuditEvents({
+      request,
+      response,
+      logPath,
+      replay: url.searchParams.get("replay") === "1",
+      pollMs: eventStreamPollMs,
+    });
     return;
   }
 
@@ -194,6 +218,94 @@ async function sendFile(response, absolutePath) {
   });
   response.end(buf);
   return true;
+}
+
+async function streamAuditEvents({ request, response, logPath, replay, pollMs }) {
+  let offset = replay ? 0 : await readLogSize(logPath);
+  let pending = "";
+  let closed = false;
+  let polling = false;
+
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  response.flushHeaders?.();
+  sendSse(response, "openharness.ready", { logPath, replay });
+
+  async function poll() {
+    if (closed || polling) {
+      return;
+    }
+
+    polling = true;
+    try {
+      const bytes = await readLogBytes(logPath);
+      if (bytes.length < offset) {
+        offset = 0;
+        pending = "";
+      }
+
+      if (bytes.length > offset) {
+        const nextBytes = bytes.subarray(offset);
+        offset = bytes.length;
+        const text = pending + nextBytes.toString("utf8");
+        const lines = text.split("\n");
+        pending = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) {
+            continue;
+          }
+
+          try {
+            sendSse(response, "openharness.event", JSON.parse(line));
+          } catch (error) {
+            sendSse(response, "openharness.error", {
+              code: "invalid_audit_event",
+              message: error.message,
+            });
+          }
+        }
+      }
+    } finally {
+      polling = false;
+    }
+  }
+
+  const interval = setInterval(poll, pollMs);
+  request.on("close", () => {
+    closed = true;
+    clearInterval(interval);
+  });
+
+  if (replay) {
+    await poll();
+  }
+}
+
+function sendSse(response, event, data) {
+  response.write(`event: ${event}\n`);
+  response.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+async function readLogSize(logPath) {
+  const bytes = await readLogBytes(logPath);
+  return bytes.length;
+}
+
+async function readLogBytes(logPath) {
+  try {
+    return await readFile(logPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return Buffer.alloc(0);
+    }
+
+    throw error;
+  }
 }
 
 function sendJson(response, statusCode, body) {

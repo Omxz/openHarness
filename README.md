@@ -140,10 +140,15 @@ The server binds to `127.0.0.1` by default and exposes JSON endpoints:
 GET /api/health
 GET /api/runs
 GET /api/runs/<run-id>
+GET /api/events/stream
 ```
 
-There are no write endpoints yet. Task creation, cancellation, streaming, and
-approvals will be added deliberately after the dashboard shape is clearer.
+There are no write endpoints yet. Task creation, cancellation, output streaming,
+and approvals will be added deliberately after the dashboard shape is clearer.
+
+`/api/events/stream` is a Server-Sent Events stream. It emits
+`openharness.ready` on connect and `openharness.event` for each appended JSONL
+audit event. Add `?replay=1` to replay existing events from the log.
 
 ## Approval Policy
 
@@ -173,6 +178,7 @@ The CLI currently runs without an interactive approval prompt, so risky model to
 - OpenAI-compatible HTTP provider.
 - Ollama local provider.
 - Codex CLI/client worker provider for signed-in Codex subscription environments.
+- Claude Code/client worker provider for signed-in Claude subscription environments.
 
 ## License
 

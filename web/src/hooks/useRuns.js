@@ -4,10 +4,8 @@ import { fetchRun, fetchRuns } from "../lib/api.js";
 
 const POLL_MS = 2000;
 
-// Draft polling hook. The plan flags this for refinement — visibility-pause,
-// error backoff, and selective re-fetch of the picked run are decisions worth
-// making explicitly. This first pass: poll /api/runs every 2s while tailing
-// AND the tab is visible; refetch the selected run on every tick.
+// SSE is the normal live-update path. The polling branch is only a browser
+// fallback for environments without EventSource.
 export function useRuns({ selectedId, tailing }) {
   const [runs, setRuns] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -37,14 +35,36 @@ export function useRuns({ selectedId, tailing }) {
     tick();
     if (!tailing) return () => { cancelled = true; };
 
-    const interval = setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      tick();
-    }, POLL_MS);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", refreshVisible);
+
+    if (typeof EventSource === "undefined") {
+      const interval = setInterval(refreshVisible, POLL_MS);
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+        document.removeEventListener("visibilitychange", refreshVisible);
+      };
+    }
+
+    const events = new EventSource("/api/events/stream");
+    events.addEventListener("openharness.ready", refreshVisible);
+    events.addEventListener("openharness.event", refreshVisible);
+    events.addEventListener("openharness.error", (event) => {
+      if (cancelled || !mounted.current) return;
+      setError(new Error(event.data || "event stream error"));
+    });
+    events.onerror = () => {
+      if (cancelled || !mounted.current) return;
+      setError(new Error("event stream disconnected"));
+    };
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      events.close();
+      document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [tailing]);
 

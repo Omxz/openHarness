@@ -34,10 +34,10 @@ export function Header({ runs, autoRefresh, setAutoRefresh, logPath }) {
         <button
           className={`mini-toggle ${autoRefresh ? "on" : ""}`}
           onClick={() => setAutoRefresh(!autoRefresh)}
-          title="Poll /api/runs every 2s"
+          title="Listen to /api/events/stream"
         >
           <span className="dot-live" />
-          {autoRefresh ? "Tailing" : "Paused"}
+          {autoRefresh ? "Streaming" : "Paused"}
         </button>
         {logPath && <code className="logpath" title={logPath}>{logPath}</code>}
         <button

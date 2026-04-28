@@ -98,10 +98,15 @@ API endpoints:
 GET http://127.0.0.1:4317/api/health
 GET http://127.0.0.1:4317/api/runs
 GET http://127.0.0.1:4317/api/runs/<run-id>
+GET http://127.0.0.1:4317/api/events/stream
 ```
 
-The API is read-only for now. Do not design the first UI around task submission
-yet; show the run dashboard first.
+The API is read-only for now. `/api/events/stream` is Server-Sent Events:
+`openharness.ready` on connect and `openharness.event` for appended JSONL audit
+events. Add `?replay=1` if a client needs to replay the existing log.
+
+Do not design the first UI around task submission yet; show the run dashboard
+first.
 
 `runs --json` returns:
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { appendEvent, createEvent } from "../src/audit-log.mjs";
 import { startApiServer } from "../src/server.mjs";
 
 test("API server exposes health and run list endpoints", async () => {
@@ -155,6 +156,82 @@ test("API server serves built UI assets and keeps SPA fallback out of /api", asy
   }
 });
 
+test("API server streams appended audit events over SSE", async () => {
+  const logPath = await createLog([]);
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    eventStreamPollMs: 10,
+  });
+  const controller = new AbortController();
+
+  try {
+    const response = await fetch(`${api.url}/api/events/stream`, {
+      signal: controller.signal,
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/event-stream/);
+
+    const reader = createSseReader(response.body.getReader());
+    const ready = await reader.next("openharness.ready");
+    assert.deepEqual(ready.data, {
+      logPath,
+      replay: false,
+    });
+
+    await appendEvent(
+      logPath,
+      createEvent({
+        taskId: "run-1",
+        actor: "user",
+        type: "task.created",
+        data: { goal: "stream me", providerId: "scripted" },
+      }),
+    );
+
+    const streamed = await reader.next("openharness.event");
+    assert.equal(streamed.data.taskId, "run-1");
+    assert.equal(streamed.data.type, "task.created");
+    assert.equal(streamed.data.data.goal, "stream me");
+  } finally {
+    controller.abort();
+    await api.close();
+  }
+});
+
+test("API server can replay existing audit events over SSE", async () => {
+  const logPath = await createLog([
+    event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {
+      goal: "existing event",
+      providerId: "scripted",
+    }),
+  ]);
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    eventStreamPollMs: 10,
+  });
+  const controller = new AbortController();
+
+  try {
+    const response = await fetch(`${api.url}/api/events/stream?replay=1`, {
+      signal: controller.signal,
+    });
+    const reader = createSseReader(response.body.getReader());
+    const ready = await reader.next("openharness.ready");
+    const streamed = await reader.next("openharness.event");
+
+    assert.equal(ready.data.replay, true);
+    assert.equal(streamed.data.taskId, "run-1");
+    assert.equal(streamed.data.data.goal, "existing event");
+  } finally {
+    controller.abort();
+    await api.close();
+  }
+});
+
 async function getJson(url) {
   const response = await fetch(url);
   assert.equal(response.status, 200);
@@ -176,4 +253,59 @@ async function createLog(events) {
 
 function event(taskId, timestamp, actor, type, data) {
   return { taskId, timestamp, actor, type, data };
+}
+
+function createSseReader(reader) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  return {
+    async next(expectedEvent) {
+      const deadline = Date.now() + 1500;
+
+      while (Date.now() < deadline) {
+        const separator = buffer.indexOf("\n\n");
+        if (separator >= 0) {
+          const raw = buffer.slice(0, separator);
+          buffer = buffer.slice(separator + 2);
+          const parsed = parseSse(raw);
+          if (!expectedEvent || parsed.event === expectedEvent) {
+            return parsed;
+          }
+          continue;
+        }
+
+        const chunk = await readWithTimeout(reader, deadline - Date.now());
+        buffer += decoder.decode(chunk, { stream: true });
+      }
+
+      throw new Error(`Timed out waiting for SSE event ${expectedEvent}`);
+    },
+  };
+}
+
+async function readWithTimeout(reader, timeoutMs) {
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error("Timed out reading SSE stream")), timeoutMs);
+  });
+  const result = await Promise.race([reader.read(), timeout]);
+  if (result.done) {
+    throw new Error("SSE stream closed");
+  }
+  return result.value;
+}
+
+function parseSse(raw) {
+  const event = { event: "message", data: "" };
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("event: ")) {
+      event.event = line.slice("event: ".length);
+    } else if (line.startsWith("data: ")) {
+      event.data += line.slice("data: ".length);
+    }
+  }
+  return {
+    event: event.event,
+    data: event.data ? JSON.parse(event.data) : null,
+  };
 }

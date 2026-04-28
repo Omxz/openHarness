@@ -4,7 +4,7 @@ export function StatusBar({ runs, logPath, tailing }) {
     <footer className="status-bar">
       <span>
         {tailing && <span className="dot-live" />}
-        {tailing ? " tailing " : " paused "}
+        {tailing ? " streaming " : " paused "}
         {logPath ?? ".openharness-events.jsonl"} · {runs.length} runs · {totalEvents} events
       </span>
       <span className="dim">v0.0.1 · local · read-only</span>
