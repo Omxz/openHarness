@@ -4,6 +4,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  createCliApprovalGate,
+  createReadlineApprovalPrompt,
+  parseToolList,
+} from "../src/approvals.mjs";
 import { loadConfig, normalizeConfig } from "../src/config.mjs";
 import { formatDoctorReport, runDoctor } from "../src/doctor.mjs";
 import { runTask, runWorkerTask } from "../src/kernel.mjs";
@@ -40,6 +45,9 @@ Options:
   --host <host>                Host for serve (default: 127.0.0.1)
   --port <port>                Port for serve (default: 4317)
   --json                       Emit machine-readable JSON
+  --auto-approve <tools>       Comma-separated tool names to auto-approve for this run
+  --deny <tools>               Comma-separated tool names to deny for this run
+  --approve                    Prompt interactively to approve risky tools (requires a TTY)
 `;
 
 const command = process.argv[2] ?? "--help";
@@ -112,6 +120,23 @@ if (command === "run") {
     command: "node",
     args: ["--version"],
   };
+
+  let approveToolUse;
+  if (!isWorkerProvider(providerName)) {
+    try {
+      approveToolUse = createCliApprovalGate({
+        autoApprove: parsed.autoApprove,
+        deny: parsed.deny,
+        interactive: parsed.approve,
+        isTty: Boolean(process.stdin.isTTY),
+        prompt: createReadlineApprovalPrompt(),
+      });
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`);
+      process.exit(1);
+    }
+  }
+
   const result =
     isWorkerProvider(providerName)
       ? await runWorkerTask({
@@ -130,6 +155,7 @@ if (command === "run") {
           provider: createProvider(providerName, config, parsed.goal),
           tools: createDefaultTools(),
           verifier,
+          approveToolUse,
         });
 
   process.stdout.write(`status: ${result.status}\n`);
@@ -206,7 +232,7 @@ process.stderr.write(`Unknown command: ${command}\n\n${HELP}`);
 process.exit(1);
 
 function parseRunArgs(args) {
-  const options = {};
+  const options = { autoApprove: [], deny: [], approve: false };
   const goalParts = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -217,6 +243,14 @@ function parseRunArgs(args) {
     } else if (value === "--config") {
       options.configPath = args[index + 1];
       index += 1;
+    } else if (value === "--auto-approve") {
+      options.autoApprove = parseToolList(args[index + 1]);
+      index += 1;
+    } else if (value === "--deny") {
+      options.deny = parseToolList(args[index + 1]);
+      index += 1;
+    } else if (value === "--approve") {
+      options.approve = true;
     } else {
       goalParts.push(value);
     }

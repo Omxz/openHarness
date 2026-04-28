@@ -57,6 +57,13 @@ function formatDetails(event) {
     ].filter(Boolean).join(" ");
   }
 
+  if (event.type === "approval.requested") {
+    return [
+      data.toolName ? `tool=${data.toolName}` : "",
+      data.risk ? `risk=${data.risk}` : "",
+    ].filter(Boolean).join(" ");
+  }
+
   if (event.type === "model.response") {
     return data.providerId ? `provider=${data.providerId}` : "";
   }

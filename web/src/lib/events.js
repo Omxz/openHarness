@@ -60,6 +60,8 @@ export function summarize(ev) {
     }
     case "approval.decided":
       return `${d.toolName ?? "?"} -> ${d.action ?? "?"}${d.risk ? ` · ${d.risk}` : ""}`;
+    case "approval.requested":
+      return `${d.toolName ?? "?"} pending${d.risk ? ` · ${d.risk}` : ""}`;
     case "verification.finished":
       return `exit ${d.result?.exitCode ?? "?"}`;
     case "worker.started":

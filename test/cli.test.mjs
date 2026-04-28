@@ -56,6 +56,46 @@ test("CLI run executes a goal with the scripted provider", async () => {
   assert.match(result.stdout, /final: Scripted provider received: inspect the repo/);
 });
 
+test("CLI run with --approve fails fast when stdin is not a TTY", async () => {
+  const result = await runNode([
+    "bin/harness.mjs",
+    "run",
+    "inspect the repo",
+    "--provider",
+    "scripted",
+    "--approve",
+  ]);
+
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /--approve requires a TTY/);
+});
+
+test("CLI run accepts --auto-approve and --deny flags without breaking scripted runs", async () => {
+  const result = await runNode([
+    "bin/harness.mjs",
+    "run",
+    "inspect the repo",
+    "--provider",
+    "scripted",
+    "--auto-approve",
+    "shell,readFile",
+    "--deny",
+    "destructiveTool",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /status: done/);
+});
+
+test("CLI help advertises the approval flags", async () => {
+  const result = await runNode(["bin/harness.mjs", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /--auto-approve/);
+  assert.match(result.stdout, /--deny/);
+  assert.match(result.stdout, /--approve/);
+});
+
 test("CLI log pretty-prints an audit log", async () => {
   const dir = await mkdtemp(join(tmpdir(), "openharness-cli-log-"));
   const logPath = join(dir, "events.jsonl");

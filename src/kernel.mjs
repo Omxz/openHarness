@@ -76,15 +76,28 @@ export async function runTask({
     }
 
     const initialDecision = policy.decideToolUse(tool, modelResponse.input);
-    const approvalDecision =
-      initialDecision.action === "needs-approval"
-        ? await approveToolUse({
-            task,
-            tool,
-            input: modelResponse.input,
-            decision: initialDecision,
-          })
-        : initialDecision;
+    let approvalDecision;
+    if (initialDecision.action === "needs-approval") {
+      await log(logPath, {
+        taskId: task.id,
+        actor: "system",
+        type: "approval.requested",
+        data: {
+          toolName: tool.name,
+          risk: tool.risk,
+          reason: initialDecision.reason,
+          input: modelResponse.input,
+        },
+      });
+      approvalDecision = await approveToolUse({
+        task,
+        tool,
+        input: modelResponse.input,
+        decision: initialDecision,
+      });
+    } else {
+      approvalDecision = initialDecision;
+    }
     policy.recordApproval(approvalDecision);
     await log(logPath, {
       taskId: task.id,

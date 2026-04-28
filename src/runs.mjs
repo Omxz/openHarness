@@ -97,6 +97,7 @@ function summarizeRun(runId, events) {
     null;
   const createdAt = created?.timestamp ?? orderedEvents[0]?.timestamp ?? null;
   const completedAt = completed?.timestamp ?? null;
+  const pending = derivePendingApproval(orderedEvents);
 
   return {
     runId,
@@ -113,9 +114,35 @@ function summarizeRun(runId, events) {
       workerFinal?.data?.result?.stdout ??
       null,
     verification: verification?.data?.result ?? null,
+    pendingApproval: pending.pending,
+    pendingApprovalTool: pending.toolName,
     eventCount: orderedEvents.length,
     events: orderedEvents,
   };
+}
+
+function derivePendingApproval(events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== "approval.requested") {
+      continue;
+    }
+
+    const toolName = event.data?.toolName ?? null;
+    const decided = events
+      .slice(index + 1)
+      .find(
+        (later) =>
+          later.type === "approval.decided" &&
+          (toolName ? later.data?.toolName === toolName : true),
+      );
+
+    if (!decided) {
+      return { pending: true, toolName };
+    }
+  }
+
+  return { pending: false, toolName: null };
 }
 
 function toRunSummary(run) {

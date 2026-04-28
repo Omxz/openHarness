@@ -64,6 +64,99 @@ test("runTask executes a model tool call, logs events, verifies, and returns fin
   assert.equal(events[4].data.result.content, "Build the kernel first.\n");
 });
 
+test("runTask emits approval.requested before invoking the approval callback for needs-approval tools", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-approval-requested-"));
+  const logPath = join(workspace, "events.jsonl");
+  const provider = createScriptedProvider({
+    id: "test:approval-requested",
+    responses: [
+      {
+        type: "tool_call",
+        toolName: "shell",
+        input: { command: "node", args: ["--version"] },
+      },
+      {
+        type: "final",
+        content: "Shell command ran.",
+      },
+    ],
+  });
+
+  let observedTypesWhenCallbackFires = null;
+  const result = await runTask({
+    goal: "check node",
+    workspace,
+    logPath,
+    provider,
+    tools: createDefaultTools(),
+    approveToolUse: async ({ decision }) => {
+      observedTypesWhenCallbackFires = (await readEvents(logPath)).map(
+        (event) => event.type,
+      );
+      return { ...decision, action: "allow", reason: "test approval" };
+    },
+    verifier: {
+      command: "node",
+      args: ["--version"],
+    },
+  });
+
+  assert.equal(result.status, "done");
+  assert.ok(
+    observedTypesWhenCallbackFires?.includes("approval.requested"),
+    "approval.requested must be logged before the approval callback fires",
+  );
+  assert.ok(
+    !observedTypesWhenCallbackFires?.includes("approval.decided"),
+    "approval.decided must not be logged before the approval callback fires",
+  );
+
+  const events = await readEvents(logPath);
+  const requested = events.find((event) => event.type === "approval.requested");
+  const decided = events.find((event) => event.type === "approval.decided");
+  assert.ok(requested, "approval.requested should be present");
+  assert.equal(requested.data.toolName, "shell");
+  assert.equal(requested.data.risk, "write");
+  assert.deepEqual(requested.data.input, {
+    command: "node",
+    args: ["--version"],
+  });
+  assert.ok(
+    events.indexOf(requested) < events.indexOf(decided),
+    "approval.requested must come before approval.decided",
+  );
+});
+
+test("runTask does not emit approval.requested for tools allowed without approval", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-approval-skip-"));
+  const logPath = join(workspace, "events.jsonl");
+  await writeFile(join(workspace, "brief.txt"), "ok\n", "utf8");
+  const provider = createScriptedProvider({
+    id: "test:read-no-request",
+    responses: [
+      { type: "tool_call", toolName: "readFile", input: { path: "brief.txt" } },
+      { type: "final", content: "done" },
+    ],
+  });
+
+  await runTask({
+    goal: "read",
+    workspace,
+    logPath,
+    privacyMode: "local-only",
+    provider,
+    tools: createDefaultTools(),
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  const events = await readEvents(logPath);
+  assert.equal(
+    events.find((event) => event.type === "approval.requested"),
+    undefined,
+    "no approval.requested should be emitted for a read-only tool",
+  );
+});
+
 test("runTask logs approval decisions before running risky tools", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-approval-kernel-"));
   const logPath = join(workspace, "events.jsonl");

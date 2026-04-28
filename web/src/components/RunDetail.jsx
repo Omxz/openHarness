@@ -1,3 +1,4 @@
+import { pendingApprovalIndicator } from "../lib/adapt.js";
 import { fmtDur, fmtTimeMs } from "../lib/format.js";
 import { StatusPill } from "./StatusPill.jsx";
 import { Timeline } from "./Timeline.jsx";
@@ -12,12 +13,24 @@ const STATUS_COLOR = {
 export function RunDetail({ run, onPickEvent, pickedEvent }) {
   if (!run) return <section className="detail empty-detail">Select a run.</section>;
 
+  const pending = pendingApprovalIndicator(run);
+
   return (
     <section className="detail">
       <div className="detail-head">
         <div className="detail-head-top">
           <StatusPill status={run.status} size="md" />
           <code className="run-id">{run.id}</code>
+          {pending && (
+            <span
+              className="pill pill-md"
+              data-testid="pending-approval"
+              style={{ color: "var(--warn)", borderColor: "var(--warn)" }}
+            >
+              <span className="pill-pulse" />
+              {pending.label} · {pending.tool}
+            </span>
+          )}
           {run.startedAt && <span className="dim">started {fmtTimeMs(run.startedAt)}</span>}
           {run.endedAt && <span className="dim">· ended {fmtTimeMs(run.endedAt)}</span>}
           {run.durationMs != null && <span className="dim">· {fmtDur(run.durationMs)}</span>}

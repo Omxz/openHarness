@@ -50,6 +50,21 @@ test("formatEvents renders a compact audit timeline", () => {
   ]);
 });
 
+test("formatEvents summarizes approval.requested with the tool and risk", () => {
+  const lines = formatEvents([
+    {
+      timestamp: "2026-04-28T10:00:00.000Z",
+      actor: "system",
+      type: "approval.requested",
+      data: { toolName: "shell", risk: "write" },
+    },
+  ]);
+
+  assert.deepEqual(lines, [
+    "2026-04-28T10:00:00.000Z system approval.requested tool=shell risk=write",
+  ]);
+});
+
 test("formatLogFile reads JSONL events and returns display text", async () => {
   const dir = await mkdtemp(join(tmpdir(), "openharness-log-viewer-"));
   const logPath = join(dir, "events.jsonl");

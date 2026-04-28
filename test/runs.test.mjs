@@ -78,6 +78,88 @@ test("listRuns and getRun read run summaries from a JSONL audit log", async () =
   assert.equal(run.events.length, 2);
 });
 
+test("buildRuns marks runs with an unmatched approval.requested as pendingApproval", () => {
+  const runs = buildRuns([
+    event("run-pending", "2026-04-28T11:00:00.000Z", "user", "task.created", {
+      goal: "do work",
+      providerId: "scripted",
+    }),
+    event(
+      "run-pending",
+      "2026-04-28T11:00:01.000Z",
+      "system",
+      "approval.requested",
+      { toolName: "shell", risk: "write" },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.runId, "run-pending");
+  assert.equal(run.pendingApproval, true);
+  assert.equal(run.pendingApprovalTool, "shell");
+});
+
+test("buildRuns clears pendingApproval once a later approval.decided arrives", () => {
+  const runs = buildRuns([
+    event("run-decided", "2026-04-28T11:00:00.000Z", "user", "task.created", {
+      goal: "do work",
+      providerId: "scripted",
+    }),
+    event(
+      "run-decided",
+      "2026-04-28T11:00:01.000Z",
+      "system",
+      "approval.requested",
+      { toolName: "shell", risk: "write" },
+    ),
+    event(
+      "run-decided",
+      "2026-04-28T11:00:02.000Z",
+      "system",
+      "approval.decided",
+      { toolName: "shell", action: "allow" },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.pendingApproval, false);
+  assert.equal(run.pendingApprovalTool, null);
+});
+
+test("buildRuns surfaces the most recent pending approval when several requests pile up", () => {
+  const runs = buildRuns([
+    event("run-multi", "2026-04-28T11:00:00.000Z", "user", "task.created", {
+      goal: "do work",
+      providerId: "scripted",
+    }),
+    event(
+      "run-multi",
+      "2026-04-28T11:00:01.000Z",
+      "system",
+      "approval.requested",
+      { toolName: "shell", risk: "write" },
+    ),
+    event(
+      "run-multi",
+      "2026-04-28T11:00:02.000Z",
+      "system",
+      "approval.decided",
+      { toolName: "shell", action: "allow" },
+    ),
+    event(
+      "run-multi",
+      "2026-04-28T11:00:03.000Z",
+      "system",
+      "approval.requested",
+      { toolName: "writeFile", risk: "write" },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.pendingApproval, true);
+  assert.equal(run.pendingApprovalTool, "writeFile");
+});
+
 test("formatRunList and formatRunDetail render operator-friendly text", () => {
   const [run] = buildRuns([
     event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {
