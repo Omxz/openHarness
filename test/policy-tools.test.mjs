@@ -53,6 +53,57 @@ test("shell tool is blocked unless the approval policy allows it", async () => {
   assert.match(result.stdout, /^v\d+\./);
 });
 
+test("policy creates explicit decisions for tool use", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-policy-"));
+  const policy = createPolicy({ workspace });
+
+  assert.deepEqual(policy.decideToolUse(readFileTool, { path: "README.md" }), {
+    action: "allow",
+    reason: "read tools are allowed",
+    toolName: "readFile",
+    risk: "read",
+  });
+  assert.deepEqual(policy.decideToolUse(shellTool, { command: "node" }), {
+    action: "needs-approval",
+    reason: "write risk requires approval",
+    toolName: "shell",
+    risk: "write",
+  });
+});
+
+test("policy records approval decisions before risky tools run", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-approval-"));
+  const policy = createPolicy({ workspace });
+
+  policy.recordApproval({
+    toolName: "shell",
+    action: "allow",
+    reason: "test approval",
+  });
+  const result = await shellTool.run(
+    { command: "node", args: ["--version"] },
+    { workspace, policy },
+  );
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /^v\d+\./);
+});
+
+test("destructive tools are denied by default", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-destructive-"));
+  const policy = createPolicy({ workspace });
+
+  assert.deepEqual(
+    policy.decideToolUse({ name: "deleteEverything", risk: "destructive" }, {}),
+    {
+      action: "deny",
+      reason: "destructive tools are denied by default",
+      toolName: "deleteEverything",
+      risk: "destructive",
+    },
+  );
+});
+
 test("filesystem tools reject paths outside the workspace", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-scope-"));
   const policy = createPolicy({ workspace });

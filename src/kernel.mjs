@@ -12,6 +12,7 @@ export async function runTask({
   tools,
   verifier,
   approvals,
+  approveToolUse = defaultApproveToolUse,
 }) {
   const task = {
     id: randomUUID(),
@@ -72,6 +73,32 @@ export async function runTask({
     const tool = tools[modelResponse.toolName];
     if (!tool) {
       throw new Error(`Unknown tool "${modelResponse.toolName}"`);
+    }
+
+    const initialDecision = policy.decideToolUse(tool, modelResponse.input);
+    const approvalDecision =
+      initialDecision.action === "needs-approval"
+        ? await approveToolUse({
+            task,
+            tool,
+            input: modelResponse.input,
+            decision: initialDecision,
+          })
+        : initialDecision;
+    policy.recordApproval(approvalDecision);
+    await log(logPath, {
+      taskId: task.id,
+      actor: "system",
+      type: "approval.decided",
+      data: approvalDecision,
+    });
+
+    if (approvalDecision.action !== "allow") {
+      if (approvalDecision.action === "deny") {
+        throw new Error(`Tool "${tool.name}" with ${tool.risk} risk is denied`);
+      }
+
+      throw new Error(`Tool "${tool.name}" with ${tool.risk} risk requires approval`);
     }
 
     await log(logPath, {
@@ -165,4 +192,8 @@ export async function runWorkerTask({
 
 async function log(logPath, event) {
   await appendEvent(logPath, createEvent(event));
+}
+
+async function defaultApproveToolUse({ decision }) {
+  return decision;
 }

@@ -24,11 +24,17 @@ test("formatEvents renders a compact audit timeline", () => {
     {
       timestamp: "2026-04-28T10:00:02.000Z",
       actor: "system",
+      type: "approval.decided",
+      data: { toolName: "shell", action: "allow" },
+    },
+    {
+      timestamp: "2026-04-28T10:00:03.000Z",
+      actor: "system",
       type: "verification.finished",
       data: { result: { exitCode: 0 } },
     },
     {
-      timestamp: "2026-04-28T10:00:03.000Z",
+      timestamp: "2026-04-28T10:00:04.000Z",
       actor: "system",
       type: "task.done",
       data: { status: "done" },
@@ -38,8 +44,9 @@ test("formatEvents renders a compact audit timeline", () => {
   assert.deepEqual(lines, [
     "2026-04-28T10:00:00.000Z user task.created goal=\"inspect README\" provider=ollama",
     "2026-04-28T10:00:01.000Z system tool.started tool=readFile",
-    "2026-04-28T10:00:02.000Z system verification.finished exit=0",
-    "2026-04-28T10:00:03.000Z system task.done status=done",
+    "2026-04-28T10:00:02.000Z system approval.decided tool=shell action=allow",
+    "2026-04-28T10:00:03.000Z system verification.finished exit=0",
+    "2026-04-28T10:00:04.000Z system task.done status=done",
   ]);
 });
 

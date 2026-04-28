@@ -107,6 +107,18 @@ Use `log` to pretty-print the JSONL audit trail:
 node bin/harness.mjs log .openharness-events.jsonl
 ```
 
+## Approval Policy
+
+OpenHarness records every tool decision in the audit log as `approval.decided`.
+
+Current defaults:
+
+- Read tools are allowed.
+- Write/network tools require approval before execution.
+- Destructive tools are denied by default.
+
+The CLI currently runs without an interactive approval prompt, so risky model tool calls remain blocked unless a future command explicitly wires an approval callback.
+
 ## Current Pieces
 
 - `src/kernel.mjs`: task orchestration loop.

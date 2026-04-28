@@ -50,6 +50,13 @@ function formatDetails(event) {
     return data.result?.exitCode !== undefined ? `exit=${data.result.exitCode}` : "";
   }
 
+  if (event.type === "approval.decided") {
+    return [
+      data.toolName ? `tool=${data.toolName}` : "",
+      data.action ? `action=${data.action}` : "",
+    ].filter(Boolean).join(" ");
+  }
+
   if (event.type === "model.response") {
     return data.providerId ? `provider=${data.providerId}` : "";
   }
