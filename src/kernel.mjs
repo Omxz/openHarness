@@ -99,6 +99,70 @@ export async function runTask({
   throw new Error("Task exceeded maximum orchestration steps");
 }
 
+export async function runWorkerTask({
+  goal,
+  workspace,
+  logPath,
+  privacyMode = "ask-before-api",
+  worker,
+  verifier,
+}) {
+  const task = {
+    id: randomUUID(),
+    goal,
+    workspace,
+    privacyMode,
+    status: "running",
+  };
+
+  await log(logPath, {
+    taskId: task.id,
+    actor: "user",
+    type: "task.created",
+    data: { goal, workspace, privacyMode, workerId: worker.id },
+  });
+  await log(logPath, {
+    taskId: task.id,
+    actor: "system",
+    type: "worker.started",
+    data: { workerId: worker.id },
+  });
+
+  const workerResult = await worker.runTask({ task });
+  await log(logPath, {
+    taskId: task.id,
+    actor: "worker",
+    type: "worker.finished",
+    data: { workerId: worker.id, result: workerResult },
+  });
+
+  const verification = await runVerifier(verifier, { workspace });
+  await log(logPath, {
+    taskId: task.id,
+    actor: "system",
+    type: "verification.finished",
+    data: { result: verification },
+  });
+
+  const status =
+    workerResult.exitCode === 0 && verification.exitCode === 0 ? "done" : "blocked";
+  await log(logPath, {
+    taskId: task.id,
+    actor: "system",
+    type: "task.done",
+    data: { status },
+  });
+
+  return {
+    taskId: task.id,
+    status,
+    workerId: worker.id,
+    final: workerResult.output,
+    worker: workerResult,
+    verification,
+  };
+}
+
 async function log(logPath, event) {
   await appendEvent(logPath, createEvent(event));
 }

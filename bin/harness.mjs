@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig, normalizeConfig } from "../src/config.mjs";
-import { runTask } from "../src/kernel.mjs";
+import { runTask, runWorkerTask } from "../src/kernel.mjs";
 import {
   createOllamaProvider,
   createOpenAICompatibleProvider,
   createScriptedProvider,
 } from "../src/providers.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
+import { createCodexWorkerProvider } from "../src/workers.mjs";
 
 const HELP = `Usage: harness <command>
 
@@ -21,7 +22,7 @@ Commands:
   --help                       Show this help text
 
 Options:
-  --provider <name>            Override config provider: scripted, openai-compatible, ollama
+  --provider <name>            Override config provider: scripted, openai-compatible, ollama, codex-worker
   --config <path>              Load OpenHarness JSON config
 `;
 
@@ -78,25 +79,34 @@ if (command === "run") {
     ? await loadConfig(parsed.configPath)
     : normalizeConfig({});
   const providerName = parsed.provider ?? config.provider;
-  const provider = createProvider(providerName, config, parsed.goal);
   const workspace = process.cwd();
   const logPath = join(workspace, ".openharness-events.jsonl");
-
-  const result = await runTask({
-    goal: parsed.goal,
-    workspace,
-    logPath,
-    privacyMode: config.privacyMode,
-    provider,
-    tools: createDefaultTools(),
-    verifier: {
-      command: "node",
-      args: ["--version"],
-    },
-  });
+  const verifier = {
+    command: "node",
+    args: ["--version"],
+  };
+  const result =
+    providerName === "codex-worker"
+      ? await runWorkerTask({
+          goal: parsed.goal,
+          workspace,
+          logPath,
+          privacyMode: config.privacyMode,
+          worker: createWorker(providerName, config),
+          verifier,
+        })
+      : await runTask({
+          goal: parsed.goal,
+          workspace,
+          logPath,
+          privacyMode: config.privacyMode,
+          provider: createProvider(providerName, config, parsed.goal),
+          tools: createDefaultTools(),
+          verifier,
+        });
 
   process.stdout.write(`status: ${result.status}\n`);
-  process.stdout.write(`provider: ${result.providerId}\n`);
+  process.stdout.write(`provider: ${result.providerId ?? result.workerId}\n`);
   process.stdout.write(`final: ${result.final}\n`);
   process.stdout.write(`event log: ${logPath}\n`);
   process.exit(result.status === "done" ? 0 : 1);
@@ -154,4 +164,12 @@ function createProvider(providerName, config, goal) {
   }
 
   throw new Error(`Unsupported provider "${providerName}"`);
+}
+
+function createWorker(providerName, config) {
+  if (providerName === "codex-worker") {
+    return createCodexWorkerProvider(config.workers["codex-worker"]);
+  }
+
+  throw new Error(`Unsupported worker "${providerName}"`);
 }

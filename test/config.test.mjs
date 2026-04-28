@@ -21,6 +21,22 @@ test("normalizeConfig provides safe defaults without API keys", () => {
     baseUrl: "http://127.0.0.1:11434",
     model: "llama3.2",
   });
+  assert.deepEqual(config.workers["codex-worker"], {
+    type: "codex-worker",
+    id: "codex-worker",
+    command: "codex",
+    args: [
+      "exec",
+      "--json",
+      "--color",
+      "never",
+      "--sandbox",
+      "workspace-write",
+      "--ask-for-approval",
+      "never",
+      "--skip-git-repo-check",
+    ],
+  });
 });
 
 test("loadConfig reads JSON config and resolves provider API keys from env", async () => {
@@ -118,4 +134,40 @@ test("normalizeConfig lets explicit provider config override environment default
   assert.equal(config.providers["openai-compatible"].baseUrl, "http://local.test/v1");
   assert.equal(config.providers["openai-compatible"].model, "explicit-model");
   assert.equal(config.providers["openai-compatible"].apiKey, "explicit-key");
+});
+
+test("loadConfig reads explicit Codex worker config", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "openharness-codex-config-"));
+  const configPath = join(dir, "openharness.json");
+  await writeFile(
+    configPath,
+    JSON.stringify(
+      {
+        provider: "codex-worker",
+        workers: {
+          "codex-worker": {
+            command: "/usr/local/bin/codex",
+            args: ["exec", "--json", "--sandbox", "read-only"],
+            model: "gpt-5.4",
+            profile: "work",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  const config = await loadConfig(configPath, { env: {} });
+
+  assert.equal(config.provider, "codex-worker");
+  assert.deepEqual(config.workers["codex-worker"], {
+    type: "codex-worker",
+    id: "codex-worker",
+    command: "/usr/local/bin/codex",
+    args: ["exec", "--json", "--sandbox", "read-only"],
+    model: "gpt-5.4",
+    profile: "work",
+  });
 });

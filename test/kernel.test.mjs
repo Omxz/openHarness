@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { readEvents } from "../src/audit-log.mjs";
-import { runTask } from "../src/kernel.mjs";
+import { runTask, runWorkerTask } from "../src/kernel.mjs";
 import { createScriptedProvider } from "../src/providers.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
 
@@ -61,4 +61,53 @@ test("runTask executes a model tool call, logs events, verifies, and returns fin
     ],
   );
   assert.equal(events[3].data.result.content, "Build the kernel first.\n");
+});
+
+test("runWorkerTask delegates to a worker, logs events, verifies, and returns final output", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-"));
+  const logPath = join(workspace, "events.jsonl");
+  const worker = {
+    id: "test:worker",
+    async runTask({ task }) {
+      return {
+        workerId: "test:worker",
+        command: "worker",
+        args: ["run"],
+        exitCode: 0,
+        stdout: `handled ${task.goal}`,
+        stderr: "",
+        output: `handled ${task.goal}`,
+      };
+    },
+  };
+
+  const result = await runWorkerTask({
+    goal: "inspect README",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: {
+      command: "node",
+      args: ["--version"],
+    },
+  });
+
+  assert.equal(result.status, "done");
+  assert.equal(result.workerId, "test:worker");
+  assert.equal(result.final, "handled inspect README");
+  assert.equal(result.verification.exitCode, 0);
+
+  const events = await readEvents(logPath);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    [
+      "task.created",
+      "worker.started",
+      "worker.finished",
+      "verification.finished",
+      "task.done",
+    ],
+  );
+  assert.equal(events[2].data.result.output, "handled inspect README");
 });

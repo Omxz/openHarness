@@ -10,7 +10,7 @@ test("CLI prints help", async () => {
   assert.match(result.stdout, /Commands:/);
   assert.match(result.stdout, /run <goal>/);
   assert.match(result.stdout, /--config/);
-  assert.match(result.stdout, /scripted, openai-compatible, ollama/);
+  assert.match(result.stdout, /scripted, openai-compatible, ollama, codex-worker/);
 });
 
 test("CLI demo runs the harness loop and writes an event log", async () => {

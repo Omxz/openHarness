@@ -60,6 +60,37 @@ For local-only Ollama usage:
 }
 ```
 
+For Codex subscription delegation through a signed-in Codex CLI:
+
+```json
+{
+  "provider": "codex-worker",
+  "privacyMode": "ask-before-api",
+  "workers": {
+    "codex-worker": {
+      "command": "codex",
+      "args": [
+        "exec",
+        "--json",
+        "--color",
+        "never",
+        "--sandbox",
+        "workspace-write",
+        "--ask-for-approval",
+        "never",
+        "--skip-git-repo-check"
+      ]
+    }
+  }
+}
+```
+
+Run with:
+
+```bash
+node bin/harness.mjs run "inspect README" --provider codex-worker
+```
+
 ## Current Pieces
 
 - `src/kernel.mjs`: task orchestration loop.
