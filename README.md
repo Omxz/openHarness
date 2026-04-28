@@ -16,9 +16,34 @@ The initial goal is a working kernel loop:
 ```bash
 npm test
 npm run demo
+node bin/harness.mjs run "inspect this repo" --provider scripted
 ```
 
 The demo uses a scripted local provider, so it does not need API keys or a local model server yet.
+
+## Provider Config
+
+OpenHarness can load a JSON config file for provider settings:
+
+```json
+{
+  "provider": "openai-compatible",
+  "privacyMode": "ask-before-api",
+  "providers": {
+    "openai-compatible": {
+      "baseUrl": "https://api.openai.com/v1",
+      "model": "gpt-4.1-mini",
+      "apiKeyEnv": "OPENAI_API_KEY"
+    }
+  }
+}
+```
+
+Run with:
+
+```bash
+node bin/harness.mjs run "summarize README" --config openharness.json
+```
 
 ## Current Pieces
 

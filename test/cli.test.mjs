@@ -8,6 +8,8 @@ test("CLI prints help", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /Usage: harness/);
   assert.match(result.stdout, /Commands:/);
+  assert.match(result.stdout, /run <goal>/);
+  assert.match(result.stdout, /--config/);
 });
 
 test("CLI demo runs the harness loop and writes an event log", async () => {
@@ -16,6 +18,21 @@ test("CLI demo runs the harness loop and writes an event log", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /status: done/);
   assert.match(result.stdout, /event log:/);
+});
+
+test("CLI run executes a goal with the scripted provider", async () => {
+  const result = await runNode([
+    "bin/harness.mjs",
+    "run",
+    "inspect the repo",
+    "--provider",
+    "scripted",
+  ]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /status: done/);
+  assert.match(result.stdout, /provider: cli:scripted/);
+  assert.match(result.stdout, /final: Scripted provider received: inspect the repo/);
 });
 
 function runNode(args) {

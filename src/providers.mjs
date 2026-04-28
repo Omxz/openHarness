@@ -21,3 +21,120 @@ export function createScriptedProvider({ id = "test:scripted", responses }) {
     },
   };
 }
+
+export function createOpenAICompatibleProvider({
+  id = "openai-compatible",
+  baseUrl = "https://api.openai.com/v1",
+  model,
+  apiKey,
+  fetchImpl = fetch,
+}) {
+  if (!model) {
+    throw new Error("OpenAI-compatible provider requires a model");
+  }
+
+  return {
+    id,
+    capabilities: {
+      chat: true,
+      toolCalling: false,
+      vision: false,
+      embeddings: false,
+      jsonMode: true,
+      streaming: false,
+      contextWindow: 128000,
+    },
+    async complete(request) {
+      const response = await fetchImpl(`${trimSlash(baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          response_format: { type: "json_object" },
+          messages: buildMessages(request),
+        }),
+      });
+
+      const body = await readJson(response);
+      if (!response.ok) {
+        throw new Error(
+          `OpenAI-compatible provider failed with ${response.status}: ${extractErrorMessage(body)}`,
+        );
+      }
+
+      return normalizeModelResponse(body);
+    },
+  };
+}
+
+function buildMessages({ task, transcript, tools }) {
+  const toolNames = Object.keys(tools ?? {});
+  return [
+    {
+      role: "system",
+      content: [
+        "You are running inside OpenHarness.",
+        "Respond only as JSON.",
+        'For final answers use: {"type":"final","content":"..."}',
+        'For tool calls use: {"type":"tool_call","toolName":"readFile","input":{"path":"README.md"}}',
+        `Task id: ${task.id}`,
+        `Available tools: ${toolNames.length ? toolNames.join(", ") : "none"}`,
+      ].join("\n"),
+    },
+    ...transcript.map((entry) => {
+      if (entry.role === "tool") {
+        return {
+          role: "tool",
+          tool_call_id: entry.name ?? "tool",
+          content: entry.content,
+        };
+      }
+
+      return {
+        role: entry.role,
+        content: entry.content,
+      };
+    }),
+  ];
+}
+
+async function readJson(response) {
+  const text = await response.text();
+  return text ? JSON.parse(text) : {};
+}
+
+function normalizeModelResponse(body) {
+  const content = body.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("OpenAI-compatible provider response did not include message content");
+  }
+
+  const parsed = JSON.parse(content);
+  if (parsed.type === "final" && typeof parsed.content === "string") {
+    return {
+      type: "final",
+      content: parsed.content,
+    };
+  }
+
+  if (parsed.type === "tool_call" && typeof parsed.toolName === "string") {
+    return {
+      type: "tool_call",
+      toolName: parsed.toolName,
+      input: parsed.input ?? {},
+    };
+  }
+
+  throw new Error(`Unsupported OpenAI-compatible response type "${parsed.type}"`);
+}
+
+function extractErrorMessage(body) {
+  return body.error?.message ?? body.message ?? JSON.stringify(body);
+}
+
+function trimSlash(value) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}

@@ -1,0 +1,51 @@
+import { readFile } from "node:fs/promises";
+
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+
+export async function loadConfig(configPath, { env = process.env } = {}) {
+  const raw = JSON.parse(await readFile(configPath, "utf8"));
+  return normalizeConfig(raw, { env });
+}
+
+export function normalizeConfig(raw = {}, { env = process.env } = {}) {
+  const rawProviders = raw.providers ?? {};
+  const openAI = normalizeOpenAICompatibleProvider(
+    rawProviders["openai-compatible"] ?? {},
+    env,
+  );
+
+  return {
+    provider: raw.provider ?? "scripted",
+    privacyMode: raw.privacyMode ?? "ask-before-api",
+    providers: {
+      ...rawProviders,
+      "openai-compatible": openAI,
+    },
+  };
+}
+
+function normalizeOpenAICompatibleProvider(rawProvider, env) {
+  const apiKeyEnv = rawProvider.apiKeyEnv;
+  const envApiKey =
+    (apiKeyEnv ? env[apiKeyEnv] : undefined) ??
+    env.OPENHARNESS_OPENAI_API_KEY ??
+    env.OPENAI_API_KEY;
+
+  return {
+    type: "openai-compatible",
+    id: rawProvider.id ?? "openai-compatible",
+    baseUrl:
+      rawProvider.baseUrl ??
+      env.OPENHARNESS_OPENAI_BASE_URL ??
+      DEFAULT_OPENAI_BASE_URL,
+    model:
+      rawProvider.model ??
+      env.OPENHARNESS_OPENAI_MODEL ??
+      DEFAULT_OPENAI_MODEL,
+    ...(apiKeyEnv ? { apiKeyEnv } : {}),
+    ...(rawProvider.apiKey ?? envApiKey
+      ? { apiKey: rawProvider.apiKey ?? envApiKey }
+      : {}),
+  };
+}
