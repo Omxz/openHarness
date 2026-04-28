@@ -33,14 +33,15 @@ export async function runTask({
 
   for (let step = 0; step < 8; step += 1) {
     const modelResponse = await provider.complete({ task, transcript, tools });
-    await log(logPath, {
-      taskId: task.id,
-      actor: "model",
-      type: "model.response",
-      data: { providerId: provider.id, response: modelResponse },
-    });
 
     if (modelResponse.type === "final") {
+      await log(logPath, {
+        taskId: task.id,
+        actor: "model",
+        type: "model.response",
+        data: { providerId: provider.id, response: modelResponse },
+      });
+
       const verification = await runVerifier(verifier, { workspace });
       await log(logPath, {
         taskId: task.id,
@@ -67,6 +68,12 @@ export async function runTask({
     }
 
     if (modelResponse.type !== "tool_call") {
+      await log(logPath, {
+        taskId: task.id,
+        actor: "model",
+        type: "model.response",
+        data: { providerId: provider.id, response: modelResponse },
+      });
       throw new Error(`Unsupported model response type "${modelResponse.type}"`);
     }
 
@@ -74,6 +81,20 @@ export async function runTask({
     if (!tool) {
       throw new Error(`Unknown tool "${modelResponse.toolName}"`);
     }
+
+    const auditInput = auditToolInput(tool, modelResponse.input);
+    await log(logPath, {
+      taskId: task.id,
+      actor: "model",
+      type: "model.response",
+      data: {
+        providerId: provider.id,
+        response: {
+          ...modelResponse,
+          input: auditInput,
+        },
+      },
+    });
 
     const initialDecision = policy.decideToolUse(tool, modelResponse.input);
     let approvalDecision;
@@ -86,13 +107,14 @@ export async function runTask({
           toolName: tool.name,
           risk: tool.risk,
           reason: initialDecision.reason,
-          input: modelResponse.input,
+          input: auditInput,
         },
       });
       approvalDecision = await approveToolUse({
         task,
         tool,
         input: modelResponse.input,
+        auditInput,
         decision: initialDecision,
       });
     } else {
@@ -118,7 +140,7 @@ export async function runTask({
       taskId: task.id,
       actor: "system",
       type: "tool.started",
-      data: { toolName: tool.name, input: modelResponse.input },
+      data: { toolName: tool.name, input: auditInput },
     });
 
     const result = await tool.run(modelResponse.input, { task, workspace, policy });
@@ -209,4 +231,12 @@ async function log(logPath, event) {
 
 async function defaultApproveToolUse({ decision }) {
   return decision;
+}
+
+function auditToolInput(tool, input) {
+  if (typeof tool.auditInput === "function") {
+    return tool.auditInput(input);
+  }
+
+  return input;
 }

@@ -186,7 +186,8 @@ GET /api/events/stream
 ```
 
 There are no write endpoints yet. Task creation, cancellation, output streaming,
-and approvals will be added deliberately after the dashboard shape is clearer.
+and approval API endpoints will be added deliberately after the dashboard shape
+is clearer.
 
 `/api/events/stream` is a Server-Sent Events stream. It emits
 `openharness.ready` on connect and `openharness.event` for each appended JSONL
@@ -194,7 +195,8 @@ audit event. Add `?replay=1` to replay existing events from the log.
 
 ## Approval Policy
 
-OpenHarness records every tool decision in the audit log as `approval.decided`.
+OpenHarness records approval requests as `approval.requested` and every tool
+decision as `approval.decided`.
 
 Current defaults:
 
@@ -202,13 +204,35 @@ Current defaults:
 - Write/network tools require approval before execution.
 - Destructive tools are denied by default.
 
-The CLI currently runs without an interactive approval prompt, so risky model tool calls remain blocked unless a future command explicitly wires an approval callback.
+For one-off CLI runs:
+
+```bash
+node bin/harness.mjs run "write a note" --provider scripted --approve
+node bin/harness.mjs run "write a note" --provider scripted --auto-approve writeFile
+node bin/harness.mjs run "write a note" --provider scripted --deny shell
+```
+
+`--approve` requires an interactive TTY. `--auto-approve writeFile` is powerful:
+it allows the model to write files during that run, so use it only in workspaces
+you are comfortable modifying.
+
+## Built-in Tools
+
+- `readFile`: reads a UTF-8 file inside the workspace.
+- `listFiles`: lists entries inside a workspace directory.
+- `shell`: runs a command inside the workspace after approval.
+- `writeFile`: writes UTF-8 text inside the workspace after approval.
+
+`writeFile` accepts `{ "path", "content", "overwrite", "createDirs" }`.
+`overwrite` defaults to `false`, so existing files are not clobbered unless the
+model explicitly asks for it. `createDirs` defaults to `false`. Audit events
+record path, byte count, and hash metadata, but not full file content.
 
 ## Current Pieces
 
 - `src/kernel.mjs`: task orchestration loop.
 - `src/providers.mjs`: provider contract plus scripted test provider.
-- `src/tools.mjs`: read, list, and approval-gated shell tools.
+- `src/tools.mjs`: read, list, approval-gated shell, and safe write tools.
 - `src/policy.mjs`: workspace and tool-risk policy checks.
 - `src/audit-log.mjs`: JSONL event logging.
 - `src/runs.mjs`: JSONL-backed run summaries for UI clients.

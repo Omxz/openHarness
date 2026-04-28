@@ -33,8 +33,13 @@ function formatDetails(event) {
   }
 
   if (event.type === "tool.started" || event.type === "tool.finished") {
+    const payload = event.type === "tool.started" ? data.input : data.result;
     return [
       data.toolName ? `tool=${data.toolName}` : "",
+      data.toolName === "writeFile" && payload?.path ? `path=${payload.path}` : "",
+      data.toolName === "writeFile" && payload?.bytesWritten !== undefined
+        ? `bytes=${payload.bytesWritten}`
+        : "",
       data.result?.exitCode !== undefined ? `exit=${data.result.exitCode}` : "",
     ].filter(Boolean).join(" ");
   }

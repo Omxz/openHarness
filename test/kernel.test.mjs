@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -155,6 +155,74 @@ test("runTask does not emit approval.requested for tools allowed without approva
     undefined,
     "no approval.requested should be emitted for a read-only tool",
   );
+});
+
+test("runTask redacts writeFile content from audit events while preserving approval context", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-writefile-kernel-"));
+  const logPath = join(workspace, "events.jsonl");
+  const provider = createScriptedProvider({
+    id: "test:writefile",
+    responses: [
+      {
+        type: "tool_call",
+        toolName: "writeFile",
+        input: {
+          path: "notes/result.md",
+          content: "private draft body\n",
+          createDirs: true,
+        },
+      },
+      {
+        type: "final",
+        content: "File written.",
+      },
+    ],
+  });
+
+  const result = await runTask({
+    goal: "write a note",
+    workspace,
+    logPath,
+    provider,
+    tools: createDefaultTools(),
+    approveToolUse: async ({ decision }) => ({
+      ...decision,
+      action: "allow",
+      reason: "test approval",
+    }),
+    verifier: {
+      command: "node",
+      args: ["--version"],
+    },
+  });
+
+  assert.equal(result.status, "done");
+  assert.equal(
+    await readFile(join(workspace, "notes", "result.md"), "utf8"),
+    "private draft body\n",
+  );
+
+  const events = await readEvents(logPath);
+  const serializedEvents = JSON.stringify(events);
+  assert.equal(
+    serializedEvents.includes("private draft body"),
+    false,
+    "writeFile content must not be stored in audit events",
+  );
+
+  const modelResponse = events.find((event) => event.type === "model.response");
+  const requested = events.find((event) => event.type === "approval.requested");
+  const started = events.find((event) => event.type === "tool.started");
+  const finished = events.find((event) => event.type === "tool.finished");
+  assert.equal(modelResponse.data.response.input.content, undefined);
+  assert.equal(requested.data.input.content, undefined);
+  assert.equal(started.data.input.content, undefined);
+  assert.equal(requested.data.input.path, "notes/result.md");
+  assert.equal(requested.data.input.bytesWritten, 19);
+  assert.equal(requested.data.input.createDirs, true);
+  assert.equal(finished.data.result.path, "notes/result.md");
+  assert.equal(finished.data.result.bytesWritten, 19);
+  assert.ok(finished.data.result.sha256);
 });
 
 test("runTask logs approval decisions before running risky tools", async () => {

@@ -6,6 +6,7 @@ import {
   createCliApprovalGate,
   createReadlineApprovalPrompt,
   decideFromAnswer,
+  formatApprovalQuestion,
   parseToolList,
 } from "../src/approvals.mjs";
 
@@ -201,4 +202,22 @@ test("createReadlineApprovalPrompt treats an empty line as fail-closed (needs-ap
 
   assert.equal(result.action, "needs-approval");
   assert.match(result.reason, /declined at TTY prompt for shell/);
+});
+
+test("formatApprovalQuestion includes safe writeFile path and byte metadata", () => {
+  const question = formatApprovalQuestion({
+    tool: { name: "writeFile", risk: "write" },
+    decision: { risk: "write" },
+    auditInput: {
+      path: "notes/result.md",
+      bytesWritten: 19,
+      createDirs: true,
+      overwrite: false,
+    },
+  });
+
+  assert.equal(
+    question,
+    "Approve writeFile (write risk; path=notes/result.md bytes=19 createDirs=true overwrite=false)? [y/N] ",
+  );
 });

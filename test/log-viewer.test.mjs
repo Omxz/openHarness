@@ -65,6 +65,34 @@ test("formatEvents summarizes approval.requested with the tool and risk", () => 
   ]);
 });
 
+test("formatEvents summarizes writeFile tool path and bytes", () => {
+  const lines = formatEvents([
+    {
+      timestamp: "2026-04-28T10:00:00.000Z",
+      actor: "system",
+      type: "tool.started",
+      data: {
+        toolName: "writeFile",
+        input: { path: "notes/result.md", bytesWritten: 12 },
+      },
+    },
+    {
+      timestamp: "2026-04-28T10:00:01.000Z",
+      actor: "tool",
+      type: "tool.finished",
+      data: {
+        toolName: "writeFile",
+        result: { path: "notes/result.md", bytesWritten: 12 },
+      },
+    },
+  ]);
+
+  assert.deepEqual(lines, [
+    "2026-04-28T10:00:00.000Z system tool.started tool=writeFile path=notes/result.md bytes=12",
+    "2026-04-28T10:00:01.000Z tool tool.finished tool=writeFile path=notes/result.md bytes=12",
+  ]);
+});
+
 test("formatLogFile reads JSONL events and returns display text", async () => {
   const dir = await mkdtemp(join(tmpdir(), "openharness-log-viewer-"));
   const logPath = join(dir, "events.jsonl");

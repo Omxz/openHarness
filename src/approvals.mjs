@@ -37,19 +37,25 @@ export function decideFromAnswer(answer, { tool, decision }) {
   };
 }
 
-export function formatApprovalQuestion({ tool, decision }) {
+export function formatApprovalQuestion({ tool, decision, auditInput }) {
   const risk = tool.risk ?? decision?.risk ?? "?";
-  return `Approve ${tool.name} (${risk} risk)? [y/N] `;
+  const detail = formatApprovalDetail(auditInput);
+  return `Approve ${tool.name} (${risk} risk${detail ? `; ${detail}` : ""})? [y/N] `;
 }
 
 export function createReadlineApprovalPrompt({
   input = process.stdin,
   output = process.stdout,
 } = {}) {
-  return async function readlineApprovalPrompt({ tool, input: toolInput, decision }) {
+  return async function readlineApprovalPrompt({ tool, input: toolInput, auditInput, decision }) {
     const rl = createInterface({ input, output });
     try {
-      const question = formatApprovalQuestion({ tool, decision, input: toolInput });
+      const question = formatApprovalQuestion({
+        tool,
+        decision,
+        input: toolInput,
+        auditInput,
+      });
       const answer = await new Promise((resolve, reject) => {
         rl.question(question, resolve);
         rl.once("error", reject);
@@ -83,7 +89,7 @@ export function createCliApprovalGate({
   const autoApproveSet = new Set(autoApprove);
   const denySet = new Set(deny);
 
-  return async function approveToolUse({ tool, input, decision }) {
+  return async function approveToolUse({ tool, input, auditInput, decision }) {
     if (denySet.has(tool.name)) {
       return {
         ...decision,
@@ -101,9 +107,34 @@ export function createCliApprovalGate({
     }
 
     if (interactive && typeof prompt === "function") {
-      return prompt({ tool, input, decision });
+      return prompt({
+        tool,
+        input,
+        auditInput: auditInput ?? auditToolInput(tool, input),
+        decision,
+      });
     }
 
     return decision;
   };
+}
+
+function auditToolInput(tool, input) {
+  if (typeof tool.auditInput === "function") {
+    return tool.auditInput(input);
+  }
+  return input;
+}
+
+function formatApprovalDetail(auditInput) {
+  if (!auditInput || typeof auditInput !== "object") {
+    return "";
+  }
+
+  return [
+    auditInput.path ? `path=${auditInput.path}` : "",
+    auditInput.bytesWritten !== undefined ? `bytes=${auditInput.bytesWritten}` : "",
+    auditInput.createDirs !== undefined ? `createDirs=${auditInput.createDirs}` : "",
+    auditInput.overwrite !== undefined ? `overwrite=${auditInput.overwrite}` : "",
+  ].filter(Boolean).join(" ");
 }
