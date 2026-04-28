@@ -5,3 +5,4 @@ coverage/
 *.log
 .openharness-events.jsonl
 openharness.local.json
+.claude/settings.local.json

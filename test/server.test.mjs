@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -64,11 +64,16 @@ test("API server returns stable JSON errors and blocks writes", async () => {
 
   try {
     const missing = await fetch(`${api.url}/api/runs/missing`);
+    const unknownApi = await fetch(`${api.url}/api/nope`);
     const writeAttempt = await fetch(`${api.url}/api/runs`, { method: "POST" });
 
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), {
       error: { code: "not_found", message: "Run not found: missing" },
+    });
+    assert.equal(unknownApi.status, 404);
+    assert.deepEqual(await unknownApi.json(), {
+      error: { code: "not_found", message: "Route not found: /api/nope" },
     });
     assert.equal(writeAttempt.status, 405);
     assert.deepEqual(await writeAttempt.json(), {
@@ -89,6 +94,62 @@ test("API server handles CORS preflight for local UI clients", async () => {
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
     assert.equal(response.headers.get("access-control-allow-methods"), "GET, OPTIONS");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server returns build instructions when the UI bundle is missing", async () => {
+  const logPath = await createLog([]);
+  const missingDist = join(await mkdtemp(join(tmpdir(), "openharness-missing-ui-")), "dist");
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    uiDist: missingDist,
+  });
+
+  try {
+    const response = await fetch(`${api.url}/`);
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: "ui_not_built",
+        message:
+          "UI bundle not found. Build it with: npm --prefix web install && npm --prefix web run build",
+      },
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server serves built UI assets and keeps SPA fallback out of /api", async () => {
+  const logPath = await createLog([]);
+  const uiDist = await mkdtemp(join(tmpdir(), "openharness-ui-dist-"));
+  await mkdir(join(uiDist, "assets"));
+  await writeFile(join(uiDist, "index.html"), "<main>OpenHarness UI</main>", "utf8");
+  await writeFile(join(uiDist, "assets", "app.js"), "console.log('ok');", "utf8");
+  const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath, uiDist });
+
+  try {
+    const root = await fetch(`${api.url}/`);
+    const fallback = await fetch(`${api.url}/runs/run-1`);
+    const asset = await fetch(`${api.url}/assets/app.js`);
+    const unknownApi = await fetch(`${api.url}/api/unknown`);
+
+    assert.equal(root.status, 200);
+    assert.equal(root.headers.get("content-type"), "text/html; charset=utf-8");
+    assert.equal(await root.text(), "<main>OpenHarness UI</main>");
+    assert.equal(fallback.status, 200);
+    assert.equal(await fallback.text(), "<main>OpenHarness UI</main>");
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get("content-type"), "text/javascript; charset=utf-8");
+    assert.equal(unknownApi.status, 404);
+    assert.deepEqual(await unknownApi.json(), {
+      error: { code: "not_found", message: "Route not found: /api/unknown" },
+    });
   } finally {
     await api.close();
   }
