@@ -20,6 +20,7 @@ node bin/harness.mjs doctor
 node bin/harness.mjs run "inspect this repo" --provider scripted
 node bin/harness.mjs runs
 node bin/harness.mjs show <run-id>
+node bin/harness.mjs serve
 node bin/harness.mjs log .openharness-events.jsonl
 ```
 
@@ -124,6 +125,26 @@ node bin/harness.mjs show <run-id> --json
 The JSON commands are intended for local dashboards and other UI clients. The
 JSONL audit log remains the source of truth.
 
+## Local API
+
+Start a read-only local API for UI development:
+
+```bash
+node bin/harness.mjs serve
+node bin/harness.mjs serve --port 4317 --log .openharness-events.jsonl
+```
+
+The server binds to `127.0.0.1` by default and exposes JSON endpoints:
+
+```text
+GET /api/health
+GET /api/runs
+GET /api/runs/<run-id>
+```
+
+There are no write endpoints yet. Task creation, cancellation, streaming, and
+approvals will be added deliberately after the dashboard shape is clearer.
+
 ## Approval Policy
 
 OpenHarness records every tool decision in the audit log as `approval.decided`.
@@ -144,6 +165,7 @@ The CLI currently runs without an interactive approval prompt, so risky model to
 - `src/policy.mjs`: workspace and tool-risk policy checks.
 - `src/audit-log.mjs`: JSONL event logging.
 - `src/runs.mjs`: JSONL-backed run summaries for UI clients.
+- `src/server.mjs`: read-only local JSON API for UI clients.
 - `src/verifier.mjs`: command-based verification.
 
 ## Next Provider Targets

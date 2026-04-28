@@ -85,6 +85,24 @@ node bin/harness.mjs runs --json
 node bin/harness.mjs show <run-id> --json
 ```
 
+Or start the read-only local API:
+
+```bash
+node bin/harness.mjs serve
+node bin/harness.mjs serve --port 4317 --log .openharness-events.jsonl
+```
+
+API endpoints:
+
+```text
+GET http://127.0.0.1:4317/api/health
+GET http://127.0.0.1:4317/api/runs
+GET http://127.0.0.1:4317/api/runs/<run-id>
+```
+
+The API is read-only for now. Do not design the first UI around task submission
+yet; show the run dashboard first.
+
 `runs --json` returns:
 
 ```json

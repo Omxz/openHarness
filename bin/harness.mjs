@@ -14,6 +14,7 @@ import {
   createScriptedProvider,
 } from "../src/providers.mjs";
 import { formatRunDetail, formatRunList, getRun, listRuns } from "../src/runs.mjs";
+import { startApiServer } from "../src/server.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
 import { createCodexWorkerProvider } from "../src/workers.mjs";
 
@@ -25,6 +26,7 @@ Commands:
   run <goal> [--config path]   Run a goal through a configured provider
   runs [--json] [--log path]   List runs from the audit log
   show <run-id> [--json]       Show one run and its event timeline
+  serve [--port 4317]          Start a read-only local JSON API
   log <path>                   Pretty-print a JSONL audit log
   --help                       Show this help text
 
@@ -32,6 +34,8 @@ Options:
   --provider <name>            Override config provider: scripted, openai-compatible, ollama, codex-worker
   --config <path>              Load OpenHarness JSON config
   --log <path>                 Read a specific JSONL audit log
+  --host <host>                Host for serve (default: 127.0.0.1)
+  --port <port>                Port for serve (default: 4317)
   --json                       Emit machine-readable JSON
 `;
 
@@ -170,6 +174,19 @@ if (command === "show") {
   process.exit(0);
 }
 
+if (command === "serve") {
+  const parsed = parseServeArgs(process.argv.slice(3));
+  const api = await startApiServer({
+    host: parsed.host ?? "127.0.0.1",
+    port: parsed.port ?? 4317,
+    logPath: parsed.logPath ?? defaultLogPath(),
+  });
+
+  process.stdout.write(`OpenHarness API listening at ${api.url}\n`);
+  process.stdout.write(`log: ${parsed.logPath ?? defaultLogPath()}\n`);
+  await new Promise(() => {});
+}
+
 if (command === "log") {
   const logPath = process.argv[3];
   if (!logPath) {
@@ -238,6 +255,26 @@ function parseLogViewArgs(args) {
       options.json = true;
     } else {
       options.positionals.push(value);
+    }
+  }
+
+  return options;
+}
+
+function parseServeArgs(args) {
+  const options = {};
+
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--log") {
+      options.logPath = args[index + 1];
+      index += 1;
+    } else if (value === "--host") {
+      options.host = args[index + 1];
+      index += 1;
+    } else if (value === "--port") {
+      options.port = Number(args[index + 1]);
+      index += 1;
     }
   }
 

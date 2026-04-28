@@ -18,6 +18,7 @@ test("CLI prints help", async () => {
   assert.match(result.stdout, /log <path>/);
   assert.match(result.stdout, /runs/);
   assert.match(result.stdout, /show <run-id>/);
+  assert.match(result.stdout, /serve/);
   assert.match(result.stdout, /--config/);
   assert.match(result.stdout, /scripted, openai-compatible, ollama, codex-worker/);
 });
