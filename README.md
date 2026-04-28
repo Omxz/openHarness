@@ -33,6 +33,7 @@ The demo uses a scripted local provider, so it does not need API keys or a local
 
 - OpenAI-compatible HTTP provider.
 - Ollama local provider.
+- Codex CLI/client worker provider for signed-in Codex subscription environments.
 
 ## License
 

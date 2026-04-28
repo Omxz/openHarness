@@ -14,6 +14,7 @@ The goal is not just "chat with tools." The goal is a cognitive runtime: a syste
 - Model agnostic: no privileged default provider.
 - Local-first: local models and local data should work without cloud dependencies.
 - API-friendly: users can bring paid API keys for stronger models.
+- Subscription-friendly: users should be able to delegate work through a signed-in Codex client when available, without requiring raw API tokens for that path.
 - Permissioned: reads, writes, network access, and destructive actions need clear policy.
 - Verifiable: every substantial task should have a check, test, preview, or other evidence.
 - Auditable: model calls, tool calls, decisions, and results should be logged.
@@ -41,7 +42,7 @@ This loop is the heart of the project. Everything else grows from it.
 
 ## Initial Provider Support
 
-Support one API provider and one local provider first.
+Support one API provider and one local provider first. Add Codex subscription support as a worker provider after the direct model providers are stable.
 
 Recommended initial pair:
 
@@ -50,8 +51,13 @@ Recommended initial pair:
 
 This proves the abstraction works without trying to support every provider immediately.
 
+Recommended follow-up provider:
+
+- Worker: Codex CLI/client provider, using the user's existing signed-in Codex environment when available.
+
 Future providers:
 
+- Codex CLI/client worker
 - Anthropic
 - Google Gemini
 - Mistral
@@ -90,6 +96,33 @@ type ModelCapabilities = {
 ```
 
 The harness should choose models based on capability, cost, privacy, reliability, and task type.
+
+## Codex Subscription Worker
+
+OpenHarness should support Codex subscription usage without treating it as a raw model API.
+
+The right abstraction is a worker provider:
+
+```ts
+type WorkerProvider = {
+  id: string
+  capabilities: WorkerCapabilities
+  runTask(input: WorkerTaskRequest): Promise<WorkerTaskResult>
+}
+```
+
+Unlike `ModelProvider`, a Codex worker provider may delegate a whole scoped task to a signed-in Codex CLI/client. OpenHarness remains the outer orchestrator: it sets the task boundary, workspace, privacy mode, approval policy, and verifier, then ingests the worker's result and audit artifacts.
+
+This enables users with a Codex subscription to use that subscription path when available, while keeping API-key providers and local model providers as separate, explicit options.
+
+Important requirements:
+
+- Detect whether a usable Codex CLI/client is installed and authenticated.
+- Treat Codex as an external worker, not as an interchangeable raw completion endpoint.
+- Pass a scoped task brief and workspace boundary.
+- Preserve OpenHarness approval, logging, and verification semantics around the delegated work.
+- Record worker inputs, outputs, exit status, changed files, and verification results in the audit log.
+- Fall back cleanly to API or local providers when Codex is unavailable.
 
 ## Task Contract
 
@@ -172,6 +205,7 @@ harness/
     providers/
       openai-compatible/
       ollama/
+      codex-worker/
     tools/
       filesystem/
       shell/
@@ -206,17 +240,20 @@ An Apache-2.0 repo with a working CLI that can:
 - Run a configured verification command.
 - Return a final summary with verification status.
 
+Codex subscription support is not required for the first public milestone, but it should be captured as a near-term provider target.
+
 ## Later Milestones
 
 1. Provider routing based on capability, cost, privacy, and task type.
-2. Tool plugin API.
-3. Policy engine with workspace zones and risk levels.
-4. Memory engine with inspectable project and user memory.
-5. Multi-role model runtime: planner, implementer, reviewer, tester, security critic.
-6. Browser-based UI with timeline, logs, model routing, and permission controls.
-7. Replay and partial rollback.
-8. Project graph with codebase indexing, dependency maps, and source-linked context.
-9. Team mode with shared policies and reusable workflows.
+2. Codex CLI/client worker provider for users with a signed-in Codex subscription environment.
+3. Tool plugin API.
+4. Policy engine with workspace zones and risk levels.
+5. Memory engine with inspectable project and user memory.
+6. Multi-role model runtime: planner, implementer, reviewer, tester, security critic.
+7. Browser-based UI with timeline, logs, model routing, and permission controls.
+8. Replay and partial rollback.
+9. Project graph with codebase indexing, dependency maps, and source-linked context.
+10. Team mode with shared policies and reusable workflows.
 
 ## First Step
 
@@ -227,4 +264,3 @@ Start with the kernel:
 > Make one task run end-to-end through a provider-independent, permissioned, logged, verifiable loop.
 
 That is the seed. Once that loop exists, every ambitious feature has somewhere real to plug in.
-
