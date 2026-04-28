@@ -1,0 +1,22 @@
+{
+  "name": "openharness",
+  "version": "0.1.0",
+  "description": "Open source, model-agnostic harness for verifiable AI work.",
+  "type": "module",
+  "bin": {
+    "harness": "./bin/harness.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node bin/harness.mjs demo"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Omxz/openHarness.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Omxz/openHarness/issues"
+  },
+  "homepage": "https://github.com/Omxz/openHarness#readme"
+}
