@@ -7,7 +7,7 @@ export function StatusBar({ runs, logPath, tailing }) {
         {tailing ? " streaming " : " paused "}
         {logPath ?? ".openharness-events.jsonl"} · {runs.length} runs · {totalEvents} events
       </span>
-      <span className="dim">v0.0.1 · local · read-only</span>
+      <span className="dim">v0.0.1 · local · operator</span>
     </footer>
   );
 }

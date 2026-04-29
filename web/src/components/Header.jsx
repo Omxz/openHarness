@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-export function Header({ runs, autoRefresh, setAutoRefresh, logPath }) {
+export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }) {
   const counts = useMemo(() => {
     const c = { done: 0, blocked: 0, failed: 0, running: 0 };
     for (const r of runs) {
@@ -42,10 +42,10 @@ export function Header({ runs, autoRefresh, setAutoRefresh, logPath }) {
         {logPath && <code className="logpath" title={logPath}>{logPath}</code>}
         <button
           className="btn btn-primary"
-          disabled
-          title="Read-only mode — task creation lands when POST /api/runs does."
+          onClick={onNewTask}
+          title="Focus task composer"
         >
-          ＋ New task
+          + New task
         </button>
       </div>
     </header>

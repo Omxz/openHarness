@@ -24,11 +24,141 @@ test("API server exposes health and run list endpoints", async () => {
     const runs = await getJson(`${api.url}/api/runs`);
 
     assert.equal(health.status, "ok");
-    assert.equal(health.readOnly, true);
+    assert.equal(health.readOnly, false);
+    assert.equal(health.capabilities.createRuns, true);
     assert.equal(health.logPath, logPath);
     assert.equal(runs.runs.length, 1);
     assert.equal(runs.runs[0].runId, "run-1");
     assert.equal(runs.runs[0].goal, "inspect README");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server starts a scripted run from POST /api/runs", async () => {
+  const logPath = await createLog([]);
+  const workspace = await mkdtemp(join(tmpdir(), "openharness-api-workspace-"));
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    workspace,
+    eventStreamPollMs: 10,
+  });
+
+  try {
+    const created = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        goal: "Inspect the API-created run path.",
+        provider: "scripted",
+        privacyMode: "local-only",
+      }),
+    });
+
+    assert.equal(created.status, 202);
+    assert.match(created.headers.get("location"), /^\/api\/runs\//);
+    const body = await created.json();
+    assert.equal(body.run.status, "running");
+    assert.equal(body.run.providerId, "cli:scripted");
+    assert.match(body.run.runId, /^[0-9a-f-]{36}$/);
+
+    const run = await waitForRun(api.url, body.run.runId, "done");
+    assert.equal(run.goal, "Inspect the API-created run path.");
+    assert.equal(run.providerId, "cli:scripted");
+    assert.equal(
+      run.final,
+      "Scripted provider received: Inspect the API-created run path.",
+    );
+    assert.equal(run.status, "done");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server validates run creation requests", async () => {
+  const logPath = await createLog([]);
+  const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath });
+
+  try {
+    const emptyGoal = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ goal: "  ", provider: "scripted" }),
+    });
+    const unsupportedProvider = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ goal: "go", provider: "codex-worker" }),
+    });
+    const invalidJson = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+
+    assert.equal(emptyGoal.status, 400);
+    assert.deepEqual(await emptyGoal.json(), {
+      error: { code: "invalid_request", message: "goal must be a non-empty string" },
+    });
+    assert.equal(unsupportedProvider.status, 400);
+    assert.deepEqual(await unsupportedProvider.json(), {
+      error: {
+        code: "invalid_request",
+        message: 'Unsupported run provider "codex-worker"',
+      },
+    });
+    assert.equal(invalidJson.status, 400);
+    assert.deepEqual(await invalidJson.json(), {
+      error: { code: "invalid_json", message: "Request body must be valid JSON" },
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server rejects cross-origin run creation", async () => {
+  const logPath = await createLog([]);
+  const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: JSON.stringify({ goal: "go", provider: "scripted" }),
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: "forbidden_origin",
+        message: "Cross-origin run creation is not allowed",
+      },
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server allows same-origin run creation", async () => {
+  const logPath = await createLog([]);
+  const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: JSON.stringify({ goal: "same origin", provider: "scripted" }),
+    });
+
+    assert.equal(response.status, 202);
   } finally {
     await api.close();
   }
@@ -59,14 +189,14 @@ test("API server exposes one run with its event timeline", async () => {
   }
 });
 
-test("API server returns stable JSON errors and blocks writes", async () => {
+test("API server returns stable JSON errors and rejects unsupported methods", async () => {
   const logPath = await createLog([]);
   const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath });
 
   try {
     const missing = await fetch(`${api.url}/api/runs/missing`);
     const unknownApi = await fetch(`${api.url}/api/nope`);
-    const writeAttempt = await fetch(`${api.url}/api/runs`, { method: "POST" });
+    const writeAttempt = await fetch(`${api.url}/api/runs/run-1`, { method: "POST" });
 
     assert.equal(missing.status, 404);
     assert.deepEqual(await missing.json(), {
@@ -78,7 +208,10 @@ test("API server returns stable JSON errors and blocks writes", async () => {
     });
     assert.equal(writeAttempt.status, 405);
     assert.deepEqual(await writeAttempt.json(), {
-      error: { code: "method_not_allowed", message: "Only GET and OPTIONS are supported" },
+      error: {
+        code: "method_not_allowed",
+        message: "Only GET, POST /api/runs, and OPTIONS are supported",
+      },
     });
   } finally {
     await api.close();
@@ -94,7 +227,7 @@ test("API server handles CORS preflight for local UI clients", async () => {
 
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
-    assert.equal(response.headers.get("access-control-allow-methods"), "GET, OPTIONS");
+    assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
   } finally {
     await api.close();
   }
@@ -236,6 +369,21 @@ async function getJson(url) {
   const response = await fetch(url);
   assert.equal(response.status, 200);
   return response.json();
+}
+
+async function waitForRun(baseUrl, runId, status, { attempts = 30 } = {}) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetch(`${baseUrl}/api/runs/${encodeURIComponent(runId)}`);
+    if (response.status === 200) {
+      const body = await response.json();
+      if (body.run?.status === status) {
+        return body.run;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error(`Timed out waiting for run ${runId} to reach ${status}`);
 }
 
 async function createLog(events) {

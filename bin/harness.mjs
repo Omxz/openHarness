@@ -34,7 +34,7 @@ Commands:
   run <goal> [--config path]   Run a goal through a configured provider
   runs [--json] [--log path]   List runs from the audit log
   show <run-id> [--json]       Show one run and its event timeline
-  serve [--port 4317]          Start a read-only local JSON API
+  serve [--port 4317]          Start the local JSON API and dashboard
   log <path>                   Pretty-print a JSONL audit log
   --help                       Show this help text
 
@@ -205,10 +205,15 @@ if (command === "show") {
 
 if (command === "serve") {
   const parsed = parseServeArgs(process.argv.slice(3));
+  const config = parsed.configPath
+    ? await loadConfig(parsed.configPath)
+    : normalizeConfig({});
   const api = await startApiServer({
     host: parsed.host ?? "127.0.0.1",
     port: parsed.port ?? 4317,
     logPath: parsed.logPath ?? defaultLogPath(),
+    workspace: process.cwd(),
+    config,
   });
 
   process.stdout.write(`OpenHarness API listening at ${api.url}\n`);
@@ -311,6 +316,9 @@ function parseServeArgs(args) {
       index += 1;
     } else if (value === "--port") {
       options.port = Number(args[index + 1]);
+      index += 1;
+    } else if (value === "--config") {
+      options.configPath = args[index + 1];
       index += 1;
     }
   }

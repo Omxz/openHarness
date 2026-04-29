@@ -20,3 +20,20 @@ export async function fetchRun(id) {
   const body = await r.json();
   return body.run ?? null;
 }
+
+export async function createRun(input, { fetchImpl = fetch } = {}) {
+  const r = await fetchImpl(`${BASE}/runs`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  const body = await r.json();
+
+  if (!r.ok) {
+    throw new Error(body.error?.message ?? `/api/runs ${r.status}`);
+  }
+
+  return body.run ?? null;
+}

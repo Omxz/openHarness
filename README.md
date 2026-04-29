@@ -169,25 +169,39 @@ JSONL audit log remains the source of truth.
 
 ## Local API
 
-Start a read-only local API for UI development:
+Start the local API and dashboard:
 
 ```bash
 node bin/harness.mjs serve
 node bin/harness.mjs serve --port 4317 --log .openharness-events.jsonl
+node bin/harness.mjs serve --config openharness.json
 ```
 
-The server binds to `127.0.0.1` by default and exposes JSON endpoints:
+The server binds to `127.0.0.1` by default. It serves the dashboard at `/` and
+exposes JSON endpoints:
 
 ```text
 GET /api/health
 GET /api/runs
 GET /api/runs/<run-id>
+POST /api/runs
 GET /api/events/stream
 ```
 
-There are no write endpoints yet. Task creation, cancellation, output streaming,
-and approval API endpoints will be added deliberately after the dashboard shape
-is clearer.
+`POST /api/runs` starts a background run from the dashboard or another local
+same-origin client:
+
+```json
+{
+  "goal": "Read README.md and summarize it",
+  "provider": "scripted",
+  "privacyMode": "local-only"
+}
+```
+
+The initial API-started provider set is `scripted`, `ollama`, and
+`openai-compatible`. Worker runs, cancellation, output streaming, and approval
+API endpoints are still deliberate follow-up slices.
 
 `/api/events/stream` is a Server-Sent Events stream. It emits
 `openharness.ready` on connect and `openharness.event` for each appended JSONL

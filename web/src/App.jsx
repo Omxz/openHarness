@@ -5,6 +5,7 @@ import { Inspector } from "./components/Inspector.jsx";
 import { RunDetail } from "./components/RunDetail.jsx";
 import { RunsList } from "./components/RunsList.jsx";
 import { StatusBar } from "./components/StatusBar.jsx";
+import { TaskComposer } from "./components/TaskComposer.jsx";
 import { useRuns } from "./hooks/useRuns.js";
 import { fetchHealth } from "./lib/api.js";
 import { adaptRun, adaptRuns } from "./lib/adapt.js";
@@ -15,6 +16,7 @@ export function App() {
   const [tailing, setTailing] = useState(true);
   const [filters, setFilters] = useState({ status: "all", provider: "all", q: "" });
   const [logPath, setLogPath] = useState(null);
+  const [composerFocusKey, setComposerFocusKey] = useState(0);
 
   useEffect(() => {
     fetchHealth().then((h) => setLogPath(h.logPath)).catch(() => {});
@@ -41,8 +43,17 @@ export function App() {
         autoRefresh={tailing}
         setAutoRefresh={setTailing}
         logPath={logPath}
+        onNewTask={() => setComposerFocusKey((key) => key + 1)}
       />
-      <div />
+      <TaskComposer
+        focusKey={composerFocusKey}
+        onCreated={(run) => {
+          if (run?.runId) {
+            setSelectedId(run.runId);
+          }
+          setTailing(true);
+        }}
+      />
       <main className="grid">
         <RunsList
           runs={runs}

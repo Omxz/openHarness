@@ -4,6 +4,7 @@ import { createPolicy } from "./policy.mjs";
 import { runVerifier } from "./verifier.mjs";
 
 export async function runTask({
+  taskId = randomUUID(),
   goal,
   workspace,
   logPath,
@@ -15,7 +16,7 @@ export async function runTask({
   approveToolUse = defaultApproveToolUse,
 }) {
   const task = {
-    id: randomUUID(),
+    id: taskId,
     goal,
     workspace,
     privacyMode,

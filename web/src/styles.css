@@ -156,6 +156,96 @@ kbd {
   padding: 1px 4px; border-radius: 3px; margin-left: 2px;
 }
 
+/* ─── task composer ───────────────────────────────────────────────────── */
+.task-composer {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  gap: 10px;
+  padding: 10px 14px;
+  align-items: end;
+}
+.composer-goal,
+.composer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.composer-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-3);
+}
+.task-composer textarea,
+.task-composer select,
+.search {
+  width: 100%;
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  outline: 0;
+}
+.task-composer textarea {
+  min-height: 48px;
+  max-height: 96px;
+  resize: vertical;
+  padding: 8px 10px;
+  line-height: 1.35;
+  font-size: var(--fs-sm);
+}
+.task-composer textarea:focus,
+.task-composer select:focus,
+.search:focus {
+  border-color: var(--accent);
+}
+.task-composer select {
+  height: 34px;
+  padding: 0 8px;
+  font-size: var(--fs-sm);
+}
+.search {
+  padding: 7px 8px;
+  font-size: var(--fs-sm);
+}
+.composer-controls {
+  display: grid;
+  grid-template-columns: 160px 170px auto;
+  gap: 8px;
+  align-items: end;
+}
+.composer-submit {
+  height: 34px;
+  white-space: nowrap;
+}
+.composer-error {
+  grid-column: 1 / -1;
+  color: var(--err);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+@media (max-width: 900px) {
+  .task-composer {
+    grid-template-columns: 1fr;
+  }
+  .composer-controls {
+    grid-template-columns: 1fr 1fr auto;
+  }
+}
+@media (max-width: 620px) {
+  .composer-controls {
+    grid-template-columns: 1fr;
+  }
+  .composer-submit {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* ─── pill ─────────────────────────────────────────────────────────────── */
 .pill {
   display: inline-flex; align-items: center; gap: 6px;

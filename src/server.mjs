@@ -3,6 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { normalizeConfig } from "./config.mjs";
+import { createRunManager } from "./run-manager.mjs";
 import { getRun, listRuns } from "./runs.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -31,6 +33,9 @@ export async function startApiServer({
   host = DEFAULT_HOST,
   port = DEFAULT_PORT,
   logPath,
+  workspace = process.cwd(),
+  config = normalizeConfig({}),
+  runManager,
   uiDist = UI_DIST,
   eventStreamPollMs = 1000,
 } = {}) {
@@ -38,11 +43,13 @@ export async function startApiServer({
     throw new Error("startApiServer requires logPath");
   }
 
+  const manager = runManager ?? createRunManager({ workspace, logPath, config });
   const server = createServer((request, response) => {
     handleRequest({
       request,
       response,
       logPath,
+      runManager: manager,
       uiDist,
       eventStreamPollMs,
     }).catch((error) => {
@@ -72,6 +79,7 @@ async function handleRequest({
   request,
   response,
   logPath,
+  runManager,
   uiDist,
   eventStreamPollMs,
 }) {
@@ -83,22 +91,40 @@ async function handleRequest({
     return;
   }
 
+  const url = new URL(request.url, "http://127.0.0.1");
+
+  if (request.method === "POST" && url.pathname === "/api/runs") {
+    if (!isAllowedPostOrigin(request)) {
+      sendJson(response, 403, {
+        error: {
+          code: "forbidden_origin",
+          message: "Cross-origin run creation is not allowed",
+        },
+      });
+      return;
+    }
+
+    await createRun({ request, response, runManager });
+    return;
+  }
+
   if (request.method !== "GET") {
     sendJson(response, 405, {
       error: {
         code: "method_not_allowed",
-        message: "Only GET and OPTIONS are supported",
+        message: "Only GET, POST /api/runs, and OPTIONS are supported",
       },
     });
     return;
   }
 
-  const url = new URL(request.url, "http://127.0.0.1");
-
   if (url.pathname === "/api/health") {
     sendJson(response, 200, {
       status: "ok",
-      readOnly: true,
+      readOnly: false,
+      capabilities: {
+        createRuns: true,
+      },
       logPath,
     });
     return;
@@ -159,6 +185,45 @@ async function handleRequest({
       message: `Route not found: ${url.pathname}`,
     },
   });
+}
+
+async function createRun({ request, response, runManager }) {
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: {
+        code: "invalid_json",
+        message: error.message,
+      },
+    });
+    return;
+  }
+
+  try {
+    const run = runManager.startRun(body);
+    response.writeHead(202, {
+      "content-type": "application/json; charset=utf-8",
+      location: `/api/runs/${encodeURIComponent(run.runId)}`,
+    });
+    response.end(`${JSON.stringify({ run: toRunCreatedResponse(run) }, null, 2)}\n`);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: {
+        code: error.code ?? "invalid_request",
+        message: error.message,
+      },
+    });
+  }
+}
+
+function toRunCreatedResponse(run) {
+  return {
+    runId: run.runId,
+    status: run.status,
+    providerId: run.providerId,
+  };
 }
 
 async function serveStatic(response, pathname, uiDist) {
@@ -308,6 +373,23 @@ async function readLogBytes(logPath) {
   }
 }
 
+async function readJsonBody(request, { limitBytes = 64 * 1024 } = {}) {
+  let raw = "";
+
+  for await (const chunk of request) {
+    raw += chunk;
+    if (Buffer.byteLength(raw, "utf8") > limitBytes) {
+      throw new Error("Request body is too large");
+    }
+  }
+
+  try {
+    return raw.trim() ? JSON.parse(raw) : {};
+  } catch {
+    throw new Error("Request body must be valid JSON");
+  }
+}
+
 function sendJson(response, statusCode, body) {
   response.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8",
@@ -317,8 +399,26 @@ function sendJson(response, statusCode, body) {
 
 function setCorsHeaders(response) {
   response.setHeader("access-control-allow-origin", "*");
-  response.setHeader("access-control-allow-methods", "GET, OPTIONS");
+  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   response.setHeader("access-control-allow-headers", "content-type");
+}
+
+function isAllowedPostOrigin(request) {
+  const origin = request.headers.origin;
+  if (!origin) {
+    return true;
+  }
+
+  const host = request.headers.host;
+  if (!host) {
+    return false;
+  }
+
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 function listen(server, { host, port }) {
