@@ -102,6 +102,7 @@ function summarizeRun(runId, events) {
   const status = cancelled
     ? "cancelled"
     : completed?.data?.status ?? "running";
+  const partial = derivePartialWorkerOutput(orderedEvents);
 
   return {
     runId,
@@ -121,9 +122,61 @@ function summarizeRun(runId, events) {
     pendingApproval: pending.pending,
     pendingApprovalTool: pending.toolName,
     pendingApprovalId: pending.approvalId,
+    partialStdout: partial.stdout,
+    partialStderr: partial.stderr,
+    partialStdoutTruncated: partial.stdoutTruncated,
+    partialStderrTruncated: partial.stderrTruncated,
     eventCount: orderedEvents.length,
     events: orderedEvents,
   };
+}
+
+// Per-stream aggregation cap. Unbounded growth is risky for long-running
+// workers that page huge JSON streams; once the cap is hit we stop appending
+// further chunks but mark the stream truncated so the UI can warn the user.
+// The full output is still recorded inside the worker.finished event.
+const PARTIAL_OUTPUT_CAP_BYTES = 64 * 1024;
+
+function derivePartialWorkerOutput(events) {
+  let stdout = "";
+  let stderr = "";
+  let stdoutTruncated = false;
+  let stderrTruncated = false;
+
+  for (const event of events) {
+    if (event.type !== "worker.output") continue;
+    const stream = event.data?.stream;
+    const chunk = typeof event.data?.chunk === "string" ? event.data.chunk : "";
+    if (!chunk) continue;
+
+    if (stream === "stdout") {
+      if (stdout.length >= PARTIAL_OUTPUT_CAP_BYTES) {
+        stdoutTruncated = true;
+        continue;
+      }
+      const remaining = PARTIAL_OUTPUT_CAP_BYTES - stdout.length;
+      if (chunk.length > remaining) {
+        stdout += chunk.slice(0, remaining);
+        stdoutTruncated = true;
+      } else {
+        stdout += chunk;
+      }
+    } else if (stream === "stderr") {
+      if (stderr.length >= PARTIAL_OUTPUT_CAP_BYTES) {
+        stderrTruncated = true;
+        continue;
+      }
+      const remaining = PARTIAL_OUTPUT_CAP_BYTES - stderr.length;
+      if (chunk.length > remaining) {
+        stderr += chunk.slice(0, remaining);
+        stderrTruncated = true;
+      } else {
+        stderr += chunk;
+      }
+    }
+  }
+
+  return { stdout, stderr, stdoutTruncated, stderrTruncated };
 }
 
 function derivePendingApproval(events) {

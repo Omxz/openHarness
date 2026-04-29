@@ -23,7 +23,7 @@ export function createCodexWorkerProvider({
       usesSubscriptionAuth: true,
       rawCompletion: false,
     },
-    async runTask({ task, signal } = {}) {
+    async runTask({ task, signal, onChunk } = {}) {
       const prompt = buildCodexPrompt(task);
       const finalArgs = [
         ...args,
@@ -37,6 +37,8 @@ export function createCodexWorkerProvider({
         cwd: task.workspace,
         input: prompt,
         signal,
+        onStdout: onChunk ? (chunk) => onChunk({ stream: "stdout", chunk }) : undefined,
+        onStderr: onChunk ? (chunk) => onChunk({ stream: "stderr", chunk }) : undefined,
       });
       const output = (result.stdout || result.stderr || "").trim();
 
@@ -68,7 +70,7 @@ export function createClaudeWorkerProvider({
       usesSubscriptionAuth: true,
       rawCompletion: false,
     },
-    async runTask({ task, signal } = {}) {
+    async runTask({ task, signal, onChunk } = {}) {
       const prompt = buildClaudePrompt(task);
       const finalArgs = [
         ...args,
@@ -79,6 +81,8 @@ export function createClaudeWorkerProvider({
       const result = await processRunner(command, finalArgs, {
         cwd: task.workspace,
         signal,
+        onStdout: onChunk ? (chunk) => onChunk({ stream: "stdout", chunk }) : undefined,
+        onStderr: onChunk ? (chunk) => onChunk({ stream: "stderr", chunk }) : undefined,
       });
       const output = (result.stdout || result.stderr || "").trim();
 
@@ -159,7 +163,11 @@ export async function detectClaudeAuth({
 // produce large final outputs that take longer to flush, raise it.
 const SUBPROCESS_GRACE_MS = 2000;
 
-export function runProcess(command, args, { cwd, input, signal } = {}) {
+export function runProcess(
+  command,
+  args,
+  { cwd, input, signal, onStdout, onStderr } = {},
+) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       const err = new Error(signal.reason ?? "aborted");
@@ -178,10 +186,27 @@ export function runProcess(command, args, { cwd, input, signal } = {}) {
     let killTimer;
 
     child.stdout.on("data", (chunk) => {
-      stdout += chunk;
+      const text = chunk.toString();
+      stdout += text;
+      if (onStdout) {
+        try {
+          onStdout(text);
+        } catch {
+          // Streaming callbacks are best-effort: we never let an observer
+          // throw take down the subprocess collection path.
+        }
+      }
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk;
+      const text = chunk.toString();
+      stderr += text;
+      if (onStderr) {
+        try {
+          onStderr(text);
+        } catch {
+          // See onStdout note above.
+        }
+      }
     });
     child.on("error", (error) => {
       if (signal && onAbort) signal.removeEventListener("abort", onAbort);

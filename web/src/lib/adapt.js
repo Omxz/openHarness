@@ -7,6 +7,7 @@ export function adaptRun(r) {
   if (!r) return null;
   const events = r.events ?? [];
   const pending = derivePendingApproval(r, events);
+  const partial = derivePartialOutput(r, events);
   return {
     id: r.runId,
     startedAt: r.createdAt,
@@ -26,6 +27,10 @@ export function adaptRun(r) {
     pendingApprovalTool: pending.toolName,
     pendingApprovalId: pending.approvalId,
     pendingApprovalDetails: pending.details,
+    partialStdout: partial.stdout,
+    partialStderr: partial.stderr,
+    partialStdoutTruncated: partial.stdoutTruncated,
+    partialStderrTruncated: partial.stderrTruncated,
     events,
   };
 }
@@ -80,6 +85,66 @@ export function pendingApprovalIndicator(run) {
     tool,
     detail: `awaiting decision for ${tool}`,
   };
+}
+
+// Mirror of src/runs.mjs PARTIAL_OUTPUT_CAP_BYTES; kept here so that the UI
+// can degrade gracefully when consuming a backend that does not yet emit the
+// summary fields (older log files, or runs in flight before the summary
+// rebuilds itself).
+const UI_PARTIAL_OUTPUT_CAP = 64 * 1024;
+
+function derivePartialOutput(run, events) {
+  if (
+    typeof run.partialStdout === "string" ||
+    typeof run.partialStderr === "string"
+  ) {
+    return {
+      stdout: run.partialStdout ?? "",
+      stderr: run.partialStderr ?? "",
+      stdoutTruncated: Boolean(run.partialStdoutTruncated),
+      stderrTruncated: Boolean(run.partialStderrTruncated),
+    };
+  }
+
+  let stdout = "";
+  let stderr = "";
+  let stdoutTruncated = false;
+  let stderrTruncated = false;
+
+  for (const ev of events ?? []) {
+    if (ev?.type !== "worker.output") continue;
+    const stream = ev.data?.stream;
+    const chunk = typeof ev.data?.chunk === "string" ? ev.data.chunk : "";
+    if (!chunk) continue;
+
+    if (stream === "stdout") {
+      const remaining = UI_PARTIAL_OUTPUT_CAP - stdout.length;
+      if (remaining <= 0) {
+        stdoutTruncated = true;
+        continue;
+      }
+      if (chunk.length > remaining) {
+        stdout += chunk.slice(0, remaining);
+        stdoutTruncated = true;
+      } else {
+        stdout += chunk;
+      }
+    } else if (stream === "stderr") {
+      const remaining = UI_PARTIAL_OUTPUT_CAP - stderr.length;
+      if (remaining <= 0) {
+        stderrTruncated = true;
+        continue;
+      }
+      if (chunk.length > remaining) {
+        stderr += chunk.slice(0, remaining);
+        stderrTruncated = true;
+      } else {
+        stderr += chunk;
+      }
+    }
+  }
+
+  return { stdout, stderr, stdoutTruncated, stderrTruncated };
 }
 
 function deriveModel(events) {

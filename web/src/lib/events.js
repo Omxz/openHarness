@@ -68,6 +68,8 @@ export function summarize(ev) {
       return d.workerId ?? "—";
     case "worker.finished":
       return `${d.workerId ?? "?"}  · exit ${d.result?.exitCode ?? "?"}`;
+    case "worker.output":
+      return `${d.stream ?? "stream"} · ${clip(d.chunk ?? "", 80)}`;
     case "provider.error":
       return `${d.code ?? "?"} ${d.message ?? ""}`;
     default:

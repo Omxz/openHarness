@@ -208,6 +208,87 @@ test("buildRuns reports status cancelled when a task.cancelled event is recorded
   assert.equal(run.completedAt, "2026-04-28T12:00:02.000Z");
 });
 
+test("buildRuns aggregates worker.output events into partialStdout/partialStderr", () => {
+  const runs = buildRuns([
+    event("run-stream", "2026-04-28T13:00:00.000Z", "user", "task.created", {
+      goal: "stream",
+      workerId: "codex-worker",
+    }),
+    event("run-stream", "2026-04-28T13:00:01.000Z", "system", "worker.started", {
+      workerId: "codex-worker",
+    }),
+    event("run-stream", "2026-04-28T13:00:02.000Z", "worker", "worker.output", {
+      workerId: "codex-worker",
+      stream: "stdout",
+      chunk: "first ",
+    }),
+    event("run-stream", "2026-04-28T13:00:03.000Z", "worker", "worker.output", {
+      workerId: "codex-worker",
+      stream: "stdout",
+      chunk: "second",
+    }),
+    event("run-stream", "2026-04-28T13:00:04.000Z", "worker", "worker.output", {
+      workerId: "codex-worker",
+      stream: "stderr",
+      chunk: "warn",
+    }),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.status, "running");
+  assert.equal(run.partialStdout, "first second");
+  assert.equal(run.partialStderr, "warn");
+});
+
+test("buildRuns surfaces partialStdout for runs that have not yet emitted worker.finished", () => {
+  const runs = buildRuns([
+    event("run-progress", "2026-04-28T13:10:00.000Z", "user", "task.created", {
+      goal: "stream",
+      workerId: "codex-worker",
+    }),
+    event(
+      "run-progress",
+      "2026-04-28T13:10:01.000Z",
+      "worker",
+      "worker.output",
+      { workerId: "codex-worker", stream: "stdout", chunk: "tick " },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.status, "running");
+  assert.equal(run.partialStdout, "tick ");
+  assert.equal(run.partialStderr, "");
+});
+
+test("buildRuns caps partial worker output to a bounded number of bytes", () => {
+  const big = "x".repeat(8 * 1024);
+  const events = [
+    event("run-bound", "2026-04-28T14:00:00.000Z", "user", "task.created", {
+      goal: "stream",
+      workerId: "codex-worker",
+    }),
+  ];
+  for (let i = 0; i < 200; i += 1) {
+    events.push(
+      event(
+        "run-bound",
+        new Date(Date.parse("2026-04-28T14:00:00.000Z") + i * 100).toISOString(),
+        "worker",
+        "worker.output",
+        { workerId: "codex-worker", stream: "stdout", chunk: big },
+      ),
+    );
+  }
+  const runs = buildRuns(events);
+  const run = runs[0];
+  assert.ok(
+    run.partialStdout.length <= 64 * 1024,
+    `partialStdout must be bounded (got ${run.partialStdout.length})`,
+  );
+  assert.equal(run.partialStdoutTruncated, true);
+});
+
 test("formatRunList and formatRunDetail render operator-friendly text", () => {
   const [run] = buildRuns([
     event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {

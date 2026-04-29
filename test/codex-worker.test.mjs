@@ -76,6 +76,34 @@ test("Codex worker captures nonzero exits without throwing", async () => {
   assert.equal(result.stderr, "not authenticated");
 });
 
+test("Codex worker forwards onChunk callbacks via runProcess onStdout/onStderr", async () => {
+  const provider = createCodexWorkerProvider({
+    runProcess: async (command, args, options) => {
+      options.onStdout?.("partial-1 ");
+      options.onStdout?.("partial-2");
+      options.onStderr?.("warn");
+      return { exitCode: 0, stdout: "partial-1 partial-2", stderr: "warn" };
+    },
+  });
+
+  const observed = [];
+  await provider.runTask({
+    task: {
+      id: "task-stream",
+      goal: "stream",
+      workspace: "/tmp",
+      privacyMode: "ask-before-api",
+    },
+    onChunk: (entry) => observed.push(entry),
+  });
+
+  assert.deepEqual(observed, [
+    { stream: "stdout", chunk: "partial-1 " },
+    { stream: "stdout", chunk: "partial-2" },
+    { stream: "stderr", chunk: "warn" },
+  ]);
+});
+
 test("Codex worker forwards an AbortSignal into runProcess", async () => {
   let receivedSignal = null;
   const provider = createCodexWorkerProvider({

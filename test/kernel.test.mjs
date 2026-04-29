@@ -467,6 +467,95 @@ test("runWorkerTask exits before spawning when signal is already aborted", async
   assert.equal(events.at(-1).data.stage, "before-spawn");
 });
 
+test("runWorkerTask streams worker chunks as worker.output audit events", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-stream-"));
+  const logPath = join(workspace, "events.jsonl");
+  const worker = {
+    id: "test:streaming",
+    async runTask({ onChunk }) {
+      onChunk?.({ stream: "stdout", chunk: "first " });
+      onChunk?.({ stream: "stdout", chunk: "second" });
+      onChunk?.({ stream: "stderr", chunk: "warn" });
+      return {
+        workerId: "test:streaming",
+        command: "worker",
+        args: ["run"],
+        exitCode: 0,
+        stdout: "first second",
+        stderr: "warn",
+        output: "first second",
+      };
+    },
+  };
+
+  const result = await runWorkerTask({
+    goal: "stream",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  assert.equal(result.status, "done");
+  const events = await readEvents(logPath);
+  const outputs = events.filter((event) => event.type === "worker.output");
+  assert.equal(outputs.length, 3);
+  assert.deepEqual(outputs.map((event) => event.data), [
+    { workerId: "test:streaming", stream: "stdout", chunk: "first " },
+    { workerId: "test:streaming", stream: "stdout", chunk: "second" },
+    { workerId: "test:streaming", stream: "stderr", chunk: "warn" },
+  ]);
+  assert.equal(outputs[0].actor, "worker");
+
+  // worker.output events should be ordered before worker.finished.
+  const types = events.map((event) => event.type);
+  assert.ok(
+    types.indexOf("worker.output") < types.indexOf("worker.finished"),
+    "worker.output must precede worker.finished",
+  );
+});
+
+test("runWorkerTask truncates large worker output chunks before logging them", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-bound-"));
+  const logPath = join(workspace, "events.jsonl");
+  const huge = "x".repeat(20_000);
+  const worker = {
+    id: "test:bound",
+    async runTask({ onChunk }) {
+      onChunk?.({ stream: "stdout", chunk: huge });
+      return {
+        workerId: "test:bound",
+        command: "worker",
+        args: [],
+        exitCode: 0,
+        stdout: huge,
+        stderr: "",
+        output: huge,
+      };
+    },
+  };
+
+  await runWorkerTask({
+    goal: "bound",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  const events = await readEvents(logPath);
+  const output = events.find((event) => event.type === "worker.output");
+  assert.ok(output, "worker.output event must be present");
+  assert.ok(
+    output.data.chunk.length <= 8192,
+    `chunk must be bounded (got ${output.data.chunk.length} chars)`,
+  );
+  assert.equal(output.data.truncated, true);
+  assert.equal(output.data.originalLength, huge.length);
+});
+
 test("runWorkerTask delegates to a worker, logs events, verifies, and returns final output", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-worker-"));
   const logPath = join(workspace, "events.jsonl");

@@ -4,6 +4,54 @@ import assert from "node:assert/strict";
 import { adaptRun, pendingApprovalIndicator } from "../web/src/lib/adapt.js";
 import { summarize } from "../web/src/lib/events.js";
 
+test("UI run adapter passes through partial worker output from the run summary", () => {
+  const run = adaptRun({
+    runId: "run-stream",
+    status: "running",
+    goal: "stream",
+    eventCount: 2,
+    partialStdout: "first second",
+    partialStderr: "warn",
+    partialStdoutTruncated: false,
+    events: [
+      {
+        type: "worker.output",
+        data: { workerId: "codex-worker", stream: "stdout", chunk: "first second" },
+      },
+      {
+        type: "worker.output",
+        data: { workerId: "codex-worker", stream: "stderr", chunk: "warn" },
+      },
+    ],
+  });
+
+  assert.equal(run.partialStdout, "first second");
+  assert.equal(run.partialStderr, "warn");
+  assert.equal(run.partialStdoutTruncated, false);
+});
+
+test("UI run adapter falls back to deriving partial output from events when the summary is missing it", () => {
+  const run = adaptRun({
+    runId: "run-stream-derive",
+    status: "running",
+    goal: "stream",
+    eventCount: 2,
+    events: [
+      {
+        type: "worker.output",
+        data: { workerId: "codex-worker", stream: "stdout", chunk: "alpha " },
+      },
+      {
+        type: "worker.output",
+        data: { workerId: "codex-worker", stream: "stdout", chunk: "beta" },
+      },
+    ],
+  });
+
+  assert.equal(run.partialStdout, "alpha beta");
+  assert.equal(run.partialStderr, "");
+});
+
 test("UI event summaries use backend approval decision field names", () => {
   const approval = {
     type: "approval.decided",
@@ -40,6 +88,26 @@ test("UI run adapter derives blocked reason from approval decisions", () => {
   });
 
   assert.equal(run.reason, "awaiting approval for shell (write risk)");
+});
+
+test("UI event summarizer renders worker.output stdout chunks", () => {
+  assert.equal(
+    summarize({
+      type: "worker.output",
+      data: { stream: "stdout", chunk: "hello world" },
+    }),
+    "stdout · hello world",
+  );
+});
+
+test("UI event summarizer renders worker.output stderr chunks", () => {
+  assert.equal(
+    summarize({
+      type: "worker.output",
+      data: { stream: "stderr", chunk: "boom" },
+    }),
+    "stderr · boom",
+  );
 });
 
 test("UI event summarizer renders approval.requested as a pending request", () => {

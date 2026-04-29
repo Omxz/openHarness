@@ -19,6 +19,9 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
 
   const pending = pendingApprovalIndicator(run);
   const canCancel = run.status === "running" || run.pendingApproval;
+  const showLiveOutput =
+    run.status === "running" &&
+    (run.partialStdout?.length || run.partialStderr?.length);
 
   return (
     <section className="detail">
@@ -59,6 +62,31 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           </div>
         )}
       </div>
+
+      {showLiveOutput && (
+        <div className="panel" data-testid="live-worker-output">
+          <div className="panel-head">
+            <span className="panel-title">Live worker output</span>
+            <span className="panel-sub">streaming · still running</span>
+          </div>
+          {run.partialStdout && (
+            <pre className="output" data-testid="live-worker-stdout">
+              {run.partialStdout}
+              {run.partialStdoutTruncated ? "\n…(truncated)" : ""}
+            </pre>
+          )}
+          {run.partialStderr && (
+            <pre
+              className="output"
+              data-testid="live-worker-stderr"
+              style={{ color: "var(--err)" }}
+            >
+              {run.partialStderr}
+              {run.partialStderrTruncated ? "\n…(truncated)" : ""}
+            </pre>
+          )}
+        </div>
+      )}
 
       {run.final && (
         <div className="panel">

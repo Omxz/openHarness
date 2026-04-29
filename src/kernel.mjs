@@ -267,10 +267,42 @@ export async function runWorkerTask({
     data: { workerId: worker.id },
   });
 
+  // Worker chunks must land in the audit log in the order they arrive AND
+  // before the worker.finished event. Awaiting each append in the data
+  // callback would serialize the subprocess pipe against fs writes, so we
+  // chain appends through a single promise and flush it before subsequent
+  // events land.
+  let chunkChain = Promise.resolve();
+  const onChunk = ({ stream, chunk } = {}) => {
+    if (typeof chunk !== "string" || chunk.length === 0) {
+      return;
+    }
+    if (stream !== "stdout" && stream !== "stderr") {
+      return;
+    }
+
+    const data = boundedChunkData({ workerId: worker.id, stream, chunk });
+    chunkChain = chunkChain
+      .then(() =>
+        log(logPath, {
+          taskId: task.id,
+          actor: "worker",
+          type: "worker.output",
+          data,
+        }),
+      )
+      .catch(() => {
+        // Streaming an audit event is best-effort: the final worker.finished
+        // event still records the full output, so a transient append failure
+        // here is recoverable for callers reading the run summary.
+      });
+  };
+
   let workerResult;
   try {
-    workerResult = await worker.runTask({ task, signal });
+    workerResult = await worker.runTask({ task, signal, onChunk });
   } catch (error) {
+    await chunkChain;
     if (error?.name === "AbortError" || signal?.aborted) {
       await log(logPath, {
         taskId: task.id,
@@ -289,6 +321,7 @@ export async function runWorkerTask({
     throw error;
   }
 
+  await chunkChain;
   await log(logPath, {
     taskId: task.id,
     actor: "worker",
@@ -320,6 +353,26 @@ export async function runWorkerTask({
     final: workerResult.output,
     worker: workerResult,
     verification,
+  };
+}
+
+// Per-chunk byte cap on streamed worker output written to the audit log.
+// This is a UX/storage trade-off: workers can produce very large bursts
+// (e.g. progress JSON), and uncapped chunks bloat the SSE stream and disk
+// log. 8 KiB keeps interactive output readable while preventing pathological
+// blowups; the full output remains available via the worker.finished event.
+const WORKER_OUTPUT_CHUNK_LIMIT = 8 * 1024;
+
+function boundedChunkData({ workerId, stream, chunk }) {
+  if (chunk.length <= WORKER_OUTPUT_CHUNK_LIMIT) {
+    return { workerId, stream, chunk };
+  }
+  return {
+    workerId,
+    stream,
+    chunk: chunk.slice(0, WORKER_OUTPUT_CHUNK_LIMIT),
+    truncated: true,
+    originalLength: chunk.length,
   };
 }
 

@@ -51,6 +51,34 @@ test("Claude worker runs claude print mode with scoped workspace and prompt", as
   assert.equal(calls[0].options.input, undefined);
 });
 
+test("Claude worker forwards onChunk callbacks via runProcess onStdout/onStderr", async () => {
+  const provider = createClaudeWorkerProvider({
+    runProcess: async (command, args, options) => {
+      options.onStdout?.("hello ");
+      options.onStdout?.("there");
+      options.onStderr?.("warn-1");
+      return { exitCode: 0, stdout: "hello there", stderr: "warn-1" };
+    },
+  });
+
+  const observed = [];
+  await provider.runTask({
+    task: {
+      id: "task-stream",
+      goal: "stream",
+      workspace: "/tmp",
+      privacyMode: "ask-before-api",
+    },
+    onChunk: (entry) => observed.push(entry),
+  });
+
+  assert.deepEqual(observed, [
+    { stream: "stdout", chunk: "hello " },
+    { stream: "stdout", chunk: "there" },
+    { stream: "stderr", chunk: "warn-1" },
+  ]);
+});
+
 test("Claude worker captures nonzero exits without throwing", async () => {
   const provider = createClaudeWorkerProvider({
     runProcess: async () => ({
