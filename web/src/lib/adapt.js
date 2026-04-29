@@ -24,6 +24,8 @@ export function adaptRun(r) {
     verification: r.verification ?? null,
     pendingApproval: pending.pending,
     pendingApprovalTool: pending.toolName,
+    pendingApprovalId: pending.approvalId,
+    pendingApprovalDetails: pending.details,
     events,
   };
 }
@@ -33,15 +35,14 @@ export function adaptRuns(runs) {
 }
 
 // Returns the data needed to render the pending-approval indicator, or null
-// when nothing is awaiting a decision. Read-only: the dashboard surfaces this
-// signal but the user must approve from the CLI.
+// when nothing is awaiting a decision.
 export function pendingApprovalIndicator(run) {
   if (!run?.pendingApproval) return null;
   const tool = run.pendingApprovalTool ?? "tool";
   return {
     label: "pending approval",
     tool,
-    detail: `awaiting CLI decision for ${tool}`,
+    detail: `awaiting decision for ${tool}`,
   };
 }
 
@@ -54,29 +55,67 @@ function deriveModel(events) {
 }
 
 function derivePendingApproval(run, events) {
+  const details = derivePendingApprovalDetails(events);
+
   if (typeof run.pendingApproval === "boolean") {
     return {
       pending: run.pendingApproval,
       toolName: run.pendingApprovalTool ?? null,
+      approvalId: run.pendingApprovalId ?? details?.approvalId ?? null,
+      details,
     };
   }
 
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const ev = events[i];
     if (ev?.type !== "approval.requested") continue;
+    const approvalId = ev.data?.approvalId ?? null;
     const toolName = ev.data?.toolName ?? null;
     const decided = events
       .slice(i + 1)
       .find(
         (later) =>
           later?.type === "approval.decided" &&
-          (toolName ? later.data?.toolName === toolName : true),
+          (approvalId
+            ? later.data?.approvalId === approvalId
+            : toolName
+              ? later.data?.toolName === toolName
+              : true),
       );
     if (!decided) {
-      return { pending: true, toolName };
+      return { pending: true, toolName, approvalId, details };
     }
   }
-  return { pending: false, toolName: null };
+  return { pending: false, toolName: null, approvalId: null, details: null };
+}
+
+function derivePendingApprovalDetails(events) {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
+    if (ev?.type !== "approval.requested") continue;
+    const approvalId = ev.data?.approvalId ?? null;
+    const toolName = ev.data?.toolName ?? null;
+    const decided = events
+      .slice(i + 1)
+      .find(
+        (later) =>
+          later?.type === "approval.decided" &&
+          (approvalId
+            ? later.data?.approvalId === approvalId
+            : toolName
+              ? later.data?.toolName === toolName
+              : true),
+      );
+    if (decided) continue;
+    return {
+      approvalId,
+      toolName,
+      risk: ev.data?.risk ?? null,
+      reason: ev.data?.reason ?? null,
+      input: ev.data?.input ?? null,
+    };
+  }
+  return null;
 }
 
 function deriveReason(events, status) {

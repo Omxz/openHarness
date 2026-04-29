@@ -185,6 +185,9 @@ GET /api/health
 GET /api/runs
 GET /api/runs/<run-id>
 POST /api/runs
+GET /api/approvals
+POST /api/approvals/<approval-id>/approve
+POST /api/approvals/<approval-id>/deny
 GET /api/events/stream
 ```
 
@@ -200,8 +203,10 @@ same-origin client:
 ```
 
 The initial API-started provider set is `scripted`, `ollama`, and
-`openai-compatible`. Worker runs, cancellation, output streaming, and approval
-API endpoints are still deliberate follow-up slices.
+`openai-compatible`. When an API-started run requests a write-risk tool,
+execution pauses until the dashboard or another same-origin local client posts
+an approve or deny decision. Worker runs, cancellation, and output streaming are
+still deliberate follow-up slices.
 
 `/api/events/stream` is a Server-Sent Events stream. It emits
 `openharness.ready` on connect and `openharness.event` for each appended JSONL

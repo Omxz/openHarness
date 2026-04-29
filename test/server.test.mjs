@@ -26,6 +26,7 @@ test("API server exposes health and run list endpoints", async () => {
     assert.equal(health.status, "ok");
     assert.equal(health.readOnly, false);
     assert.equal(health.capabilities.createRuns, true);
+    assert.equal(health.capabilities.approvalDecisions, true);
     assert.equal(health.logPath, logPath);
     assert.equal(runs.runs.length, 1);
     assert.equal(runs.runs[0].runId, "run-1");
@@ -210,7 +211,8 @@ test("API server returns stable JSON errors and rejects unsupported methods", as
     assert.deepEqual(await writeAttempt.json(), {
       error: {
         code: "method_not_allowed",
-        message: "Only GET, POST /api/runs, and OPTIONS are supported",
+        message:
+          "Only GET, POST /api/runs, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
     });
   } finally {
@@ -228,6 +230,253 @@ test("API server handles CORS preflight for local UI clients", async () => {
     assert.equal(response.status, 204);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
     assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server lists pending approvals and resolves an approve POST", async () => {
+  const logPath = await createLog([]);
+  const workspace = await mkdtemp(join(tmpdir(), "openharness-approval-api-"));
+  const approvalManager = await import("../src/approval-manager.mjs").then((m) =>
+    m.createApprovalManager(),
+  );
+  const decisionPromise = approvalManager.approveToolUse({
+    approvalId: "a-1",
+    task: { id: "run-1", goal: "do work" },
+    tool: { name: "writeFile", risk: "write" },
+    input: { path: "out.txt", content: "secret body" },
+    auditInput: { path: "out.txt", bytesWritten: 11 },
+    decision: {
+      action: "needs-approval",
+      toolName: "writeFile",
+      risk: "write",
+      reason: "write risk requires approval",
+    },
+  });
+
+  const runManager = {
+    approvalManager,
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    workspace,
+    runManager,
+  });
+
+  try {
+    const list = await getJson(`${api.url}/api/approvals`);
+    assert.equal(list.approvals.length, 1);
+    assert.equal(list.approvals[0].approvalId, "a-1");
+    assert.equal(list.approvals[0].runId, "run-1");
+    assert.equal(list.approvals[0].toolName, "writeFile");
+    assert.equal(list.approvals[0].risk, "write");
+    assert.deepEqual(list.approvals[0].input, {
+      path: "out.txt",
+      bytesWritten: 11,
+    });
+    assert.equal(JSON.stringify(list).includes("secret body"), false);
+
+    const approve = await fetch(`${api.url}/api/approvals/a-1/approve`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: JSON.stringify({ reason: "looks fine" }),
+    });
+    assert.equal(approve.status, 200);
+    const body = await approve.json();
+    assert.equal(body.approval.approvalId, "a-1");
+
+    const decision = await decisionPromise;
+    assert.equal(decision.action, "allow");
+    assert.equal(decision.reason, "looks fine");
+
+    const after = await getJson(`${api.url}/api/approvals`);
+    assert.equal(after.approvals.length, 0);
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server resolves a deny POST with the supplied reason", async () => {
+  const logPath = await createLog([]);
+  const approvalManager = await import("../src/approval-manager.mjs").then((m) =>
+    m.createApprovalManager(),
+  );
+  const decisionPromise = approvalManager.approveToolUse({
+    approvalId: "a-2",
+    task: { id: "run-2", goal: "do work" },
+    tool: { name: "writeFile", risk: "write" },
+    input: { path: "out.txt" },
+    auditInput: { path: "out.txt", bytesWritten: 0 },
+    decision: {
+      action: "needs-approval",
+      toolName: "writeFile",
+      risk: "write",
+      reason: "write risk requires approval",
+    },
+  });
+
+  const runManager = {
+    approvalManager,
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const deny = await fetch(`${api.url}/api/approvals/a-2/deny`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: JSON.stringify({ reason: "no thank you" }),
+    });
+    assert.equal(deny.status, 200);
+
+    const decision = await decisionPromise;
+    assert.equal(decision.action, "deny");
+    assert.equal(decision.reason, "no thank you");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server returns 404 when approving an unknown approvalId", async () => {
+  const logPath = await createLog([]);
+  const approvalManager = await import("../src/approval-manager.mjs").then((m) =>
+    m.createApprovalManager(),
+  );
+  const runManager = {
+    approvalManager,
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const response = await fetch(`${api.url}/api/approvals/missing/approve`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: "{}",
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error: { code: "not_found", message: "Approval not found: missing" },
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server rejects cross-origin approval reads and decisions", async () => {
+  const logPath = await createLog([]);
+  const approvalManager = await import("../src/approval-manager.mjs").then((m) =>
+    m.createApprovalManager(),
+  );
+  approvalManager.approveToolUse({
+    approvalId: "a-3",
+    task: { id: "run-3", goal: "do work" },
+    tool: { name: "shell", risk: "write" },
+    input: { command: "node" },
+    auditInput: { command: "node" },
+    decision: {
+      action: "needs-approval",
+      toolName: "shell",
+      risk: "write",
+      reason: "write risk requires approval",
+    },
+  }).catch(() => {});
+
+  const runManager = {
+    approvalManager,
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const readResponse = await fetch(`${api.url}/api/approvals`, {
+      headers: { origin: "http://evil.example" },
+    });
+    const response = await fetch(`${api.url}/api/approvals/a-3/approve`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: "{}",
+    });
+    const denyResponse = await fetch(`${api.url}/api/approvals/a-3/deny`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: "{}",
+    });
+
+    assert.equal(readResponse.status, 403);
+    assert.deepEqual(await readResponse.json(), {
+      error: {
+        code: "forbidden_origin",
+        message: "Cross-origin approval reads are not allowed",
+      },
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: "forbidden_origin",
+        message: "Cross-origin approval decisions are not allowed",
+      },
+    });
+    assert.equal(denyResponse.status, 403);
+
+    assert.equal(approvalManager.list().length, 1);
   } finally {
     await api.close();
   }

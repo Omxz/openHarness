@@ -94,7 +94,7 @@ async function handleRequest({
   const url = new URL(request.url, "http://127.0.0.1");
 
   if (request.method === "POST" && url.pathname === "/api/runs") {
-    if (!isAllowedPostOrigin(request)) {
+    if (!isAllowedRequestOrigin(request)) {
       sendJson(response, 403, {
         error: {
           code: "forbidden_origin",
@@ -108,12 +108,55 @@ async function handleRequest({
     return;
   }
 
+  const approvalDecisionMatch =
+    request.method === "POST"
+      ? url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|deny)$/)
+      : null;
+  if (approvalDecisionMatch) {
+    if (!isAllowedRequestOrigin(request)) {
+      sendJson(response, 403, {
+        error: {
+          code: "forbidden_origin",
+          message: "Cross-origin approval decisions are not allowed",
+        },
+      });
+      return;
+    }
+
+    await decideApproval({
+      request,
+      response,
+      runManager,
+      approvalId: decodeURIComponent(approvalDecisionMatch[1]),
+      action: approvalDecisionMatch[2],
+    });
+    return;
+  }
+
   if (request.method !== "GET") {
     sendJson(response, 405, {
       error: {
         code: "method_not_allowed",
-        message: "Only GET, POST /api/runs, and OPTIONS are supported",
+        message:
+          "Only GET, POST /api/runs, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/approvals") {
+    if (!isAllowedRequestOrigin(request)) {
+      sendJson(response, 403, {
+        error: {
+          code: "forbidden_origin",
+          message: "Cross-origin approval reads are not allowed",
+        },
+      });
+      return;
+    }
+
+    sendJson(response, 200, {
+      approvals: runManager.approvalManager?.list?.() ?? [],
     });
     return;
   }
@@ -124,6 +167,7 @@ async function handleRequest({
       readOnly: false,
       capabilities: {
         createRuns: true,
+        approvalDecisions: true,
       },
       logPath,
     });
@@ -216,6 +260,50 @@ async function createRun({ request, response, runManager }) {
       },
     });
   }
+}
+
+async function decideApproval({ request, response, runManager, approvalId, action }) {
+  const manager = runManager.approvalManager;
+  if (!manager) {
+    sendJson(response, 503, {
+      error: {
+        code: "approvals_unavailable",
+        message: "Approval manager is not configured",
+      },
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: { code: "invalid_json", message: error.message },
+    });
+    return;
+  }
+
+  const reason =
+    typeof body?.reason === "string" && body.reason.trim()
+      ? body.reason.trim()
+      : undefined;
+  const result =
+    action === "approve"
+      ? manager.approve(approvalId, { reason })
+      : manager.deny(approvalId, { reason });
+
+  if (!result.ok) {
+    sendJson(response, 404, {
+      error: {
+        code: "not_found",
+        message: `Approval not found: ${approvalId}`,
+      },
+    });
+    return;
+  }
+
+  sendJson(response, 200, { approval: result.summary });
 }
 
 function toRunCreatedResponse(run) {
@@ -403,7 +491,7 @@ function setCorsHeaders(response) {
   response.setHeader("access-control-allow-headers", "content-type");
 }
 
-function isAllowedPostOrigin(request) {
+function isAllowedRequestOrigin(request) {
   const origin = request.headers.origin;
   if (!origin) {
     return true;

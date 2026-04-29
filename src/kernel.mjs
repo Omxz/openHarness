@@ -99,12 +99,15 @@ export async function runTask({
 
     const initialDecision = policy.decideToolUse(tool, modelResponse.input);
     let approvalDecision;
+    let approvalId = null;
     if (initialDecision.action === "needs-approval") {
+      approvalId = randomUUID();
       await log(logPath, {
         taskId: task.id,
         actor: "system",
         type: "approval.requested",
         data: {
+          approvalId,
           toolName: tool.name,
           risk: tool.risk,
           reason: initialDecision.reason,
@@ -117,6 +120,7 @@ export async function runTask({
         input: modelResponse.input,
         auditInput,
         decision: initialDecision,
+        approvalId,
       });
     } else {
       approvalDecision = initialDecision;
@@ -126,7 +130,7 @@ export async function runTask({
       taskId: task.id,
       actor: "system",
       type: "approval.decided",
-      data: approvalDecision,
+      data: approvalId ? { ...approvalDecision, approvalId } : approvalDecision,
     });
 
     if (approvalDecision.action !== "allow") {

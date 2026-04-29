@@ -502,6 +502,24 @@ kbd {
 .verify-row .dim { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; min-width: 60px; }
 .verify-row code { color: var(--fg); }
 
+.approval-panel {
+  border-color: var(--warn);
+}
+.approval-panel .panel-title {
+  color: var(--warn);
+}
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  flex-wrap: wrap;
+}
+.approval-error {
+  color: var(--err);
+  padding: 0 14px 12px;
+  font-size: var(--fs-sm);
+}
+
 /* ─── timeline ─────────────────────────────────────────────────────────── */
 .tl { list-style: none; margin: 0; padding: 4px 0; }
 .tl-row {

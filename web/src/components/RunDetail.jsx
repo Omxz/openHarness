@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { pendingApprovalIndicator } from "../lib/adapt.js";
+import { approveApproval, denyApproval } from "../lib/api.js";
 import { fmtDur, fmtTimeMs } from "../lib/format.js";
 import { StatusPill } from "./StatusPill.jsx";
 import { Timeline } from "./Timeline.jsx";
@@ -62,6 +65,10 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           </div>
         )}
       </div>
+
+      {run.pendingApproval && (
+        <PendingApprovalPanel run={run} />
+      )}
 
       {run.final && (
         <div className="panel">
@@ -131,4 +138,105 @@ function VerifyRow({ k, v }) {
 function clip(s, n = 200) {
   if (s == null) return "";
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function PendingApprovalPanel({ run }) {
+  const [submitting, setSubmitting] = useState(null);
+  const [error, setError] = useState(null);
+  const details = run.pendingApprovalDetails;
+  const tool = details?.toolName ?? run.pendingApprovalTool ?? "tool";
+  const risk = details?.risk ?? "?";
+  const reason = details?.reason ?? null;
+  const approvalId = run.pendingApprovalId ?? details?.approvalId ?? null;
+  const inputJson = details?.input ? JSON.stringify(details.input, null, 2) : null;
+
+  async function handleDecide(action) {
+    if (!approvalId || submitting) return;
+    setSubmitting(action);
+    setError(null);
+    try {
+      if (action === "approve") {
+        await approveApproval(approvalId);
+      } else {
+        await denyApproval(approvalId);
+      }
+    } catch (err) {
+      setError(err.message ?? `Failed to ${action} approval`);
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  return (
+    <div
+      className="panel approval-panel"
+      data-testid="pending-approval-panel"
+    >
+      <div className="panel-head">
+        <span className="panel-title">Approval required</span>
+        <span className="panel-sub">
+          {tool} · {risk} risk
+        </span>
+      </div>
+      <div className="verify-body">
+        <div className="verify-row">
+          <span className="dim">tool</span>
+          <code>{tool}</code>
+        </div>
+        <div className="verify-row">
+          <span className="dim">risk</span>
+          <code>{risk}</code>
+        </div>
+        {reason && (
+          <div className="verify-row">
+            <span className="dim">reason</span>
+            <span>{reason}</span>
+          </div>
+        )}
+        {approvalId && (
+          <div className="verify-row">
+            <span className="dim">id</span>
+            <code>{approvalId}</code>
+          </div>
+        )}
+        {inputJson && (
+          <div className="verify-row">
+            <span className="dim">input</span>
+            <pre className="output" style={{ margin: 0 }}>{inputJson}</pre>
+          </div>
+        )}
+      </div>
+      <div className="approval-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="approve-button"
+          disabled={!approvalId || submitting !== null}
+          onClick={() => handleDecide("approve")}
+        >
+          {submitting === "approve" ? "Approving…" : "Approve"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-warn"
+          data-testid="deny-button"
+          disabled={!approvalId || submitting !== null}
+          onClick={() => handleDecide("deny")}
+        >
+          {submitting === "deny" ? "Denying…" : "Deny"}
+        </button>
+        {!approvalId && (
+          <span className="dim">(no approval id available — approve via CLI)</span>
+        )}
+      </div>
+      {error && (
+        <div
+          className="approval-error"
+          data-testid="pending-approval-error"
+        >
+          {error}
+        </div>
+      )}
+    </div>
+  );
 }

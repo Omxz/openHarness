@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createApprovalManager } from "./approval-manager.mjs";
 import { appendEvent, createEvent } from "./audit-log.mjs";
 import { normalizeConfig } from "./config.mjs";
 import { runTask } from "./kernel.mjs";
@@ -18,6 +19,7 @@ export function createRunManager({
   config = normalizeConfig({}),
   verifier = { command: "node", args: ["--version"] },
   tools = createDefaultTools(),
+  approvalManager = createApprovalManager(),
 } = {}) {
   if (!logPath) {
     throw new Error("createRunManager requires logPath");
@@ -26,6 +28,7 @@ export function createRunManager({
   const activeRuns = new Map();
 
   return {
+    approvalManager,
     startRun(input = {}) {
       const request = normalizeRunRequest(input, config);
       const runId = randomUUID();
@@ -47,6 +50,7 @@ export function createRunManager({
         provider,
         tools,
         verifier,
+        approveToolUse: (context) => approvalManager.approveToolUse(context),
       })
         .then((result) => {
           activeRuns.set(runId, {

@@ -126,6 +126,27 @@ test("buildRuns clears pendingApproval once a later approval.decided arrives", (
   assert.equal(run.pendingApprovalTool, null);
 });
 
+test("buildRuns surfaces pendingApprovalId from approval.requested events", () => {
+  const runs = buildRuns([
+    event("run-pending-id", "2026-04-28T12:00:00.000Z", "user", "task.created", {
+      goal: "do work",
+      providerId: "scripted",
+    }),
+    event(
+      "run-pending-id",
+      "2026-04-28T12:00:01.000Z",
+      "system",
+      "approval.requested",
+      { approvalId: "abc-123", toolName: "shell", risk: "write" },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.pendingApproval, true);
+  assert.equal(run.pendingApprovalTool, "shell");
+  assert.equal(run.pendingApprovalId, "abc-123");
+});
+
 test("buildRuns surfaces the most recent pending approval when several requests pile up", () => {
   const runs = buildRuns([
     event("run-multi", "2026-04-28T11:00:00.000Z", "user", "task.created", {

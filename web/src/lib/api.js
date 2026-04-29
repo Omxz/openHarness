@@ -37,3 +37,38 @@ export async function createRun(input, { fetchImpl = fetch } = {}) {
 
   return body.run ?? null;
 }
+
+export async function fetchApprovals({ fetchImpl = fetch } = {}) {
+  const r = await fetchImpl(`${BASE}/approvals`);
+  if (!r.ok) throw new Error(`/api/approvals ${r.status}`);
+  const body = await r.json();
+  return body.approvals ?? [];
+}
+
+export function approveApproval(id, options = {}, { fetchImpl = fetch } = {}) {
+  return decideApproval(id, "approve", options, { fetchImpl });
+}
+
+export function denyApproval(id, options = {}, { fetchImpl = fetch } = {}) {
+  return decideApproval(id, "deny", options, { fetchImpl });
+}
+
+async function decideApproval(id, action, options, { fetchImpl }) {
+  const reason =
+    typeof options?.reason === "string" && options.reason.trim()
+      ? options.reason.trim()
+      : undefined;
+  const r = await fetchImpl(
+    `${BASE}/approvals/${encodeURIComponent(id)}/${action}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(reason ? { reason } : {}),
+    },
+  );
+  const body = await r.json();
+  if (!r.ok) {
+    throw new Error(body.error?.message ?? `/api/approvals/${id}/${action} ${r.status}`);
+  }
+  return body.approval ?? null;
+}

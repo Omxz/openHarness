@@ -127,6 +127,85 @@ test("runTask emits approval.requested before invoking the approval callback for
   );
 });
 
+test("runTask attaches a stable approvalId to approval.requested, approval.decided, and the approval callback context", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-approval-id-"));
+  const logPath = join(workspace, "events.jsonl");
+  const provider = createScriptedProvider({
+    id: "test:approval-id",
+    responses: [
+      {
+        type: "tool_call",
+        toolName: "shell",
+        input: { command: "node", args: ["--version"] },
+      },
+      { type: "final", content: "ok" },
+    ],
+  });
+
+  let callbackContext = null;
+  await runTask({
+    goal: "check node",
+    workspace,
+    logPath,
+    provider,
+    tools: createDefaultTools(),
+    approveToolUse: async (context) => {
+      callbackContext = context;
+      return { ...context.decision, action: "allow", reason: "test approval" };
+    },
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  const events = await readEvents(logPath);
+  const requested = events.find((event) => event.type === "approval.requested");
+  const decided = events.find((event) => event.type === "approval.decided");
+
+  assert.ok(requested.data.approvalId, "approval.requested must include approvalId");
+  assert.match(requested.data.approvalId, /^[0-9a-f-]{36}$/);
+  assert.equal(decided.data.approvalId, requested.data.approvalId);
+  assert.equal(callbackContext.approvalId, requested.data.approvalId);
+});
+
+test("runTask issues distinct approval ids for separate approval requests", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-approval-multi-"));
+  const logPath = join(workspace, "events.jsonl");
+  const provider = createScriptedProvider({
+    id: "test:approval-multi",
+    responses: [
+      {
+        type: "tool_call",
+        toolName: "shell",
+        input: { command: "node", args: ["--version"] },
+      },
+      {
+        type: "tool_call",
+        toolName: "writeFile",
+        input: { path: "out.txt", content: "hi", createDirs: true },
+      },
+      { type: "final", content: "ok" },
+    ],
+  });
+
+  await runTask({
+    goal: "two approvals",
+    workspace,
+    logPath,
+    provider,
+    tools: createDefaultTools(),
+    approveToolUse: async ({ decision }) => ({
+      ...decision,
+      action: "allow",
+      reason: "test approval",
+    }),
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  const events = await readEvents(logPath);
+  const requested = events.filter((event) => event.type === "approval.requested");
+  assert.equal(requested.length, 2);
+  assert.notEqual(requested[0].data.approvalId, requested[1].data.approvalId);
+});
+
 test("runTask does not emit approval.requested for tools allowed without approval", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-approval-skip-"));
   const logPath = join(workspace, "events.jsonl");

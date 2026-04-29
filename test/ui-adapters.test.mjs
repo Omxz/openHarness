@@ -130,7 +130,7 @@ test("pendingApprovalIndicator returns a label and tool when the run is pending"
   const indicator = pendingApprovalIndicator(run);
   assert.equal(indicator.label, "pending approval");
   assert.equal(indicator.tool, "shell");
-  assert.match(indicator.detail, /awaiting CLI decision for shell/);
+  assert.match(indicator.detail, /awaiting decision for shell/);
 });
 
 test("pendingApprovalIndicator returns null when nothing is pending", () => {
@@ -152,5 +152,5 @@ test("pendingApprovalIndicator falls back to a generic tool label when toolName 
   });
 
   assert.equal(indicator.tool, "tool");
-  assert.match(indicator.detail, /awaiting CLI decision for tool/);
+  assert.match(indicator.detail, /awaiting decision for tool/);
 });
