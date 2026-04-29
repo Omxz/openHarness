@@ -108,6 +108,30 @@ async function handleRequest({
     return;
   }
 
+  const cancelMatch =
+    request.method === "POST"
+      ? url.pathname.match(/^\/api\/runs\/([^/]+)\/cancel$/)
+      : null;
+  if (cancelMatch) {
+    if (!isAllowedRequestOrigin(request)) {
+      sendJson(response, 403, {
+        error: {
+          code: "forbidden_origin",
+          message: "Cross-origin run cancellation is not allowed",
+        },
+      });
+      return;
+    }
+
+    await cancelRunRoute({
+      request,
+      response,
+      runManager,
+      runId: decodeURIComponent(cancelMatch[1]),
+    });
+    return;
+  }
+
   const approvalDecisionMatch =
     request.method === "POST"
       ? url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|deny)$/)
@@ -138,7 +162,7 @@ async function handleRequest({
       error: {
         code: "method_not_allowed",
         message:
-          "Only GET, POST /api/runs, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
+          "Only GET, POST /api/runs, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
     });
     return;
@@ -167,6 +191,7 @@ async function handleRequest({
       readOnly: false,
       capabilities: {
         createRuns: true,
+        cancelRuns: true,
         approvalDecisions: true,
       },
       logPath,
@@ -260,6 +285,46 @@ async function createRun({ request, response, runManager }) {
       },
     });
   }
+}
+
+async function cancelRunRoute({ request, response, runManager, runId }) {
+  if (typeof runManager.cancelRun !== "function") {
+    sendJson(response, 503, {
+      error: {
+        code: "cancel_unavailable",
+        message: "Run cancellation is not configured",
+      },
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: { code: "invalid_json", message: error.message },
+    });
+    return;
+  }
+
+  const reason =
+    typeof body?.reason === "string" && body.reason.trim()
+      ? body.reason.trim()
+      : undefined;
+  const result = runManager.cancelRun(runId, reason ? { reason } : {});
+
+  if (!result.ok) {
+    sendJson(response, 404, {
+      error: {
+        code: "not_found",
+        message: `Run not found: ${runId}`,
+      },
+    });
+    return;
+  }
+
+  sendJson(response, 200, { run: result.summary });
 }
 
 async function decideApproval({ request, response, runManager, approvalId, action }) {

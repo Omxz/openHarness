@@ -56,6 +56,7 @@ export function createOpenAICompatibleProvider({
           response_format: { type: "json_object" },
           messages: buildMessages(request),
         }),
+        signal: request.signal,
       });
 
       const body = await readJson(response);
@@ -103,6 +104,7 @@ export function createOllamaProvider({
           format: "json",
           messages: buildMessages(request),
         }),
+        signal: request.signal,
       });
 
       const body = await readJson(response);

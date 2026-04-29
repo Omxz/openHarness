@@ -92,6 +92,31 @@ test("Ollama provider includes useful error details for non-2xx responses", asyn
   );
 });
 
+test("Ollama provider forwards the AbortSignal to fetch", async () => {
+  const fakeFetch = createFakeFetch({
+    responseBody: {
+      message: {
+        content: JSON.stringify({ type: "final", content: "ok" }),
+      },
+    },
+  });
+  const provider = createOllamaProvider({
+    baseUrl: "http://ollama.test",
+    model: "llama3.2",
+    fetchImpl: fakeFetch,
+  });
+
+  const controller = new AbortController();
+  await provider.complete({
+    task: { id: "task-4", goal: "answer locally" },
+    transcript: [{ role: "user", content: "answer locally" }],
+    tools: {},
+    signal: controller.signal,
+  });
+
+  assert.equal(fakeFetch.requests[0].signal, controller.signal);
+});
+
 function createFakeFetch({ statusCode = 200, responseBody }) {
   const requests = [];
   const fakeFetch = async (url, options) => {
@@ -100,6 +125,7 @@ function createFakeFetch({ statusCode = 200, responseBody }) {
       method: options.method,
       headers: options.headers,
       body: JSON.parse(options.body),
+      signal: options.signal,
     });
     return new Response(JSON.stringify(responseBody), {
       status: statusCode,

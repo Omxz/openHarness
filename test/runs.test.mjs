@@ -181,6 +181,33 @@ test("buildRuns surfaces the most recent pending approval when several requests 
   assert.equal(run.pendingApprovalTool, "writeFile");
 });
 
+test("buildRuns reports status cancelled when a task.cancelled event is recorded", () => {
+  const runs = buildRuns([
+    event("run-cancel", "2026-04-28T12:00:00.000Z", "user", "task.created", {
+      goal: "do work",
+      providerId: "scripted",
+    }),
+    event(
+      "run-cancel",
+      "2026-04-28T12:00:01.000Z",
+      "system",
+      "approval.requested",
+      { approvalId: "abc", toolName: "shell", risk: "write" },
+    ),
+    event(
+      "run-cancel",
+      "2026-04-28T12:00:02.000Z",
+      "system",
+      "task.cancelled",
+      { reason: "user cancelled" },
+    ),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.status, "cancelled");
+  assert.equal(run.completedAt, "2026-04-28T12:00:02.000Z");
+});
+
 test("formatRunList and formatRunDetail render operator-friendly text", () => {
   const [run] = buildRuns([
     event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {

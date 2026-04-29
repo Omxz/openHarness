@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   approveApproval,
+  cancelRun,
   createRun,
   denyApproval,
   fetchApprovals,
@@ -177,6 +178,64 @@ test("approveApproval omits a body when no reason is supplied", async () => {
   );
 
   assert.deepEqual(JSON.parse(requests[0].init.body), {});
+});
+
+test("cancelRun POSTs to the cancel route and returns the cancelled run", async () => {
+  const requests = [];
+  const result = await cancelRun(
+    "run 7",
+    { reason: "stop now" },
+    {
+      fetchImpl: async (url, init) => {
+        requests.push({ url, init });
+        return response({
+          status: 200,
+          body: { run: { runId: "run 7", status: "cancelled" } },
+        });
+      },
+    },
+  );
+
+  assert.equal(requests[0].url, "/api/runs/run%207/cancel");
+  assert.equal(requests[0].init.method, "POST");
+  assert.equal(requests[0].init.headers["content-type"], "application/json");
+  assert.deepEqual(JSON.parse(requests[0].init.body), { reason: "stop now" });
+  assert.equal(result.runId, "run 7");
+  assert.equal(result.status, "cancelled");
+});
+
+test("cancelRun omits a body when no reason is supplied", async () => {
+  const requests = [];
+  await cancelRun(
+    "run-1",
+    undefined,
+    {
+      fetchImpl: async (url, init) => {
+        requests.push({ url, init });
+        return response({ status: 200, body: { run: { runId: "run-1", status: "cancelled" } } });
+      },
+    },
+  );
+
+  assert.deepEqual(JSON.parse(requests[0].init.body), {});
+});
+
+test("cancelRun surfaces API error messages", async () => {
+  await assert.rejects(
+    () =>
+      cancelRun(
+        "missing",
+        {},
+        {
+          fetchImpl: async () =>
+            response({
+              status: 404,
+              body: { error: { code: "not_found", message: "Run not found: missing" } },
+            }),
+        },
+      ),
+    /Run not found: missing/,
+  );
 });
 
 function response({ status, body }) {

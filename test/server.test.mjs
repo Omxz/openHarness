@@ -26,6 +26,7 @@ test("API server exposes health and run list endpoints", async () => {
     assert.equal(health.status, "ok");
     assert.equal(health.readOnly, false);
     assert.equal(health.capabilities.createRuns, true);
+    assert.equal(health.capabilities.cancelRuns, true);
     assert.equal(health.capabilities.approvalDecisions, true);
     assert.equal(health.logPath, logPath);
     assert.equal(runs.runs.length, 1);
@@ -212,7 +213,7 @@ test("API server returns stable JSON errors and rejects unsupported methods", as
       error: {
         code: "method_not_allowed",
         message:
-          "Only GET, POST /api/runs, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
+          "Only GET, POST /api/runs, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
     });
   } finally {
@@ -477,6 +478,147 @@ test("API server rejects cross-origin approval reads and decisions", async () =>
     assert.equal(denyResponse.status, 403);
 
     assert.equal(approvalManager.list().length, 1);
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server cancels a running run via POST /api/runs/:id/cancel", async () => {
+  const logPath = await createLog([]);
+  const cancelled = [];
+  const runManager = {
+    approvalManager: {
+      list: () => [],
+    },
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+    cancelRun(runId, options) {
+      cancelled.push({ runId, options });
+      return {
+        ok: true,
+        summary: {
+          runId,
+          status: "cancelled",
+          reason: options?.reason ?? null,
+        },
+      };
+    },
+  };
+
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs/run-7/cancel`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: JSON.stringify({ reason: "user clicked cancel" }),
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.run.runId, "run-7");
+    assert.equal(body.run.status, "cancelled");
+    assert.equal(cancelled.length, 1);
+    assert.equal(cancelled[0].runId, "run-7");
+    assert.equal(cancelled[0].options.reason, "user clicked cancel");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server returns 404 when cancelling an unknown run", async () => {
+  const logPath = await createLog([]);
+  const runManager = {
+    approvalManager: { list: () => [] },
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+    cancelRun() {
+      return { ok: false, code: "not_found" };
+    },
+  };
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs/missing/cancel`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: "{}",
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      error: { code: "not_found", message: "Run not found: missing" },
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server rejects cross-origin run cancellation", async () => {
+  const logPath = await createLog([]);
+  const calls = [];
+  const runManager = {
+    approvalManager: { list: () => [] },
+    startRun() {
+      throw new Error("not used");
+    },
+    getActiveRuns() {
+      return [];
+    },
+    cancelRun(runId) {
+      calls.push(runId);
+      return { ok: true, summary: { runId, status: "cancelled" } };
+    },
+  };
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+  });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs/run-1/cancel`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: "{}",
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: "forbidden_origin",
+        message: "Cross-origin run cancellation is not allowed",
+      },
+    });
+    assert.equal(calls.length, 0);
   } finally {
     await api.close();
   }

@@ -72,6 +72,9 @@ export function createApprovalManager() {
     deny(approvalId, { reason } = {}) {
       return settle(approvalId, "deny", reason ?? "denied from dashboard");
     },
+    cancel(approvalId, { reason } = {}) {
+      return settle(approvalId, "cancelled", reason ?? "run cancelled");
+    },
     list() {
       return [...pending.values()].map(summarize);
     },

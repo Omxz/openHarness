@@ -24,7 +24,7 @@ export function RunsList({ runs, selectedId, onSelect, filters, setFilters }) {
           <FilterChips
             label="status"
             value={filters.status}
-            options={["all", "done", "blocked", "running"]}
+            options={["all", "done", "blocked", "running", "cancelled"]}
             onChange={(v) => setFilters({ ...filters, status: v })}
           />
         </div>

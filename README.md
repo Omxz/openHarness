@@ -185,6 +185,7 @@ GET /api/health
 GET /api/runs
 GET /api/runs/<run-id>
 POST /api/runs
+POST /api/runs/<run-id>/cancel
 GET /api/approvals
 POST /api/approvals/<approval-id>/approve
 POST /api/approvals/<approval-id>/deny
@@ -205,8 +206,15 @@ same-origin client:
 The initial API-started provider set is `scripted`, `ollama`, and
 `openai-compatible`. When an API-started run requests a write-risk tool,
 execution pauses until the dashboard or another same-origin local client posts
-an approve or deny decision. Worker runs, cancellation, and output streaming are
-still deliberate follow-up slices.
+an approve or deny decision.
+
+`POST /api/runs/<run-id>/cancel` stops an API-started run that is still
+`running` or waiting on a pending approval. The server aborts the in-flight
+provider fetch (the OpenAI-compatible and Ollama providers receive the
+`AbortSignal`), unblocks any pending approval without executing the tool, and
+appends a `task.cancelled` audit event so the run summarizes as `cancelled`
+instead of `blocked`. Worker-backed runs and dashboard-started worker
+provisioning are still deliberate follow-up slices.
 
 `/api/events/stream` is a Server-Sent Events stream. It emits
 `openharness.ready` on connect and `openharness.event` for each appended JSONL

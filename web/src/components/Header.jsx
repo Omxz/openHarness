@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }) {
   const counts = useMemo(() => {
-    const c = { done: 0, blocked: 0, failed: 0, running: 0 };
+    const c = { done: 0, blocked: 0, failed: 0, running: 0, cancelled: 0 };
     for (const r of runs) {
       if (c[r.status] !== undefined) c[r.status] += 1;
     }
@@ -30,6 +30,7 @@ export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }
           <span className="count"><i style={{ background: "var(--warn)" }} />{counts.blocked} blocked</span>
           <span className="count"><i style={{ background: "var(--err)" }} />{counts.failed} failed</span>
           <span className="count"><i style={{ background: "var(--info)" }} />{counts.running} running</span>
+          <span className="count"><i style={{ background: "var(--warn)" }} />{counts.cancelled} cancelled</span>
         </div>
         <button
           className={`mini-toggle ${autoRefresh ? "on" : ""}`}

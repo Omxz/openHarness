@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { pendingApprovalIndicator } from "../lib/adapt.js";
-import { approveApproval, denyApproval } from "../lib/api.js";
+import { approveApproval, cancelRun, denyApproval } from "../lib/api.js";
 import { fmtDur, fmtTimeMs } from "../lib/format.js";
 import { StatusPill } from "./StatusPill.jsx";
 import { Timeline } from "./Timeline.jsx";
@@ -11,12 +11,14 @@ const STATUS_COLOR = {
   blocked: "var(--warn)",
   failed: "var(--err)",
   running: "var(--info)",
+  cancelled: "var(--warn)",
 };
 
 export function RunDetail({ run, onPickEvent, pickedEvent }) {
   if (!run) return <section className="detail empty-detail">Select a run.</section>;
 
   const pending = pendingApprovalIndicator(run);
+  const canCancel = run.status === "running" || run.pendingApproval;
 
   return (
     <section className="detail">
@@ -37,6 +39,7 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           {run.startedAt && <span className="dim">started {fmtTimeMs(run.startedAt)}</span>}
           {run.endedAt && <span className="dim">· ended {fmtTimeMs(run.endedAt)}</span>}
           {run.durationMs != null && <span className="dim">· {fmtDur(run.durationMs)}</span>}
+          {canCancel && <CancelRunButton runId={run.id} />}
         </div>
         <h1 className="goal">{run.goal ?? "(no goal)"}</h1>
         <div className="kv-grid">
@@ -138,6 +141,47 @@ function VerifyRow({ k, v }) {
 function clip(s, n = 200) {
   if (s == null) return "";
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function CancelRunButton({ runId }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleClick() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await cancelRun(runId);
+    } catch (err) {
+      setError(err.message ?? "Failed to cancel run");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-warn"
+        data-testid="cancel-run-button"
+        disabled={submitting}
+        onClick={handleClick}
+      >
+        {submitting ? "Cancelling…" : "Cancel"}
+      </button>
+      {error && (
+        <span
+          className="dim"
+          data-testid="cancel-run-error"
+          style={{ color: "var(--err)" }}
+        >
+          {error}
+        </span>
+      )}
+    </>
+  );
 }
 
 function PendingApprovalPanel({ run }) {

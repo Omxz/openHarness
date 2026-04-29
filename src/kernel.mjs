@@ -14,6 +14,7 @@ export async function runTask({
   verifier,
   approvals,
   approveToolUse = defaultApproveToolUse,
+  signal,
 }) {
   const task = {
     id: taskId,
@@ -32,8 +33,34 @@ export async function runTask({
     data: { goal, workspace, privacyMode, providerId: provider.id },
   });
 
+  if (signal?.aborted) {
+    return finishCancelled({ logPath, taskId: task.id, providerId: provider.id, signal });
+  }
+
   for (let step = 0; step < 8; step += 1) {
-    const modelResponse = await provider.complete({ task, transcript, tools });
+    let modelResponse;
+    try {
+      modelResponse = await provider.complete({ task, transcript, tools, signal });
+    } catch (error) {
+      if (signal?.aborted) {
+        return finishCancelled({
+          logPath,
+          taskId: task.id,
+          providerId: provider.id,
+          signal,
+        });
+      }
+      throw error;
+    }
+
+    if (signal?.aborted) {
+      return finishCancelled({
+        logPath,
+        taskId: task.id,
+        providerId: provider.id,
+        signal,
+      });
+    }
 
     if (modelResponse.type === "final") {
       await log(logPath, {
@@ -42,6 +69,15 @@ export async function runTask({
         type: "model.response",
         data: { providerId: provider.id, response: modelResponse },
       });
+
+      if (signal?.aborted) {
+        return finishCancelled({
+          logPath,
+          taskId: task.id,
+          providerId: provider.id,
+          signal,
+        });
+      }
 
       const verification = await runVerifier(verifier, { workspace });
       await log(logPath, {
@@ -132,6 +168,25 @@ export async function runTask({
       type: "approval.decided",
       data: approvalId ? { ...approvalDecision, approvalId } : approvalDecision,
     });
+
+    if (approvalDecision.action === "cancelled") {
+      return finishCancelled({
+        logPath,
+        taskId: task.id,
+        providerId: provider.id,
+        signal,
+        reason: approvalDecision.reason,
+      });
+    }
+
+    if (signal?.aborted) {
+      return finishCancelled({
+        logPath,
+        taskId: task.id,
+        providerId: provider.id,
+        signal,
+      });
+    }
 
     if (approvalDecision.action !== "allow") {
       if (approvalDecision.action === "deny") {
@@ -244,4 +299,28 @@ function auditToolInput(tool, input) {
   }
 
   return input;
+}
+
+async function finishCancelled({ logPath, taskId, providerId, signal, reason }) {
+  const cancelReason = reason ?? cancelReasonFromSignal(signal);
+  await log(logPath, {
+    taskId,
+    actor: "system",
+    type: "task.cancelled",
+    data: { reason: cancelReason },
+  });
+  return {
+    taskId,
+    status: "cancelled",
+    providerId,
+    reason: cancelReason,
+  };
+}
+
+function cancelReasonFromSignal(signal) {
+  if (!signal?.aborted) return "cancelled";
+  const reason = signal.reason;
+  if (typeof reason === "string") return reason;
+  if (reason && typeof reason.message === "string") return reason.message;
+  return "cancelled";
 }

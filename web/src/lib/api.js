@@ -38,6 +38,23 @@ export async function createRun(input, { fetchImpl = fetch } = {}) {
   return body.run ?? null;
 }
 
+export async function cancelRun(id, options = {}, { fetchImpl = fetch } = {}) {
+  const reason =
+    typeof options?.reason === "string" && options.reason.trim()
+      ? options.reason.trim()
+      : undefined;
+  const r = await fetchImpl(`${BASE}/runs/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+  const body = await r.json();
+  if (!r.ok) {
+    throw new Error(body.error?.message ?? `/api/runs/${id}/cancel ${r.status}`);
+  }
+  return body.run ?? null;
+}
+
 export async function fetchApprovals({ fetchImpl = fetch } = {}) {
   const r = await fetchImpl(`${BASE}/approvals`);
   if (!r.ok) throw new Error(`/api/approvals ${r.status}`);

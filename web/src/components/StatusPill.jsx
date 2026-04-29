@@ -1,8 +1,9 @@
 const STATUS = {
-  done:    { label: "done",    color: "var(--ok)"   },
-  blocked: { label: "blocked", color: "var(--warn)" },
-  failed:  { label: "failed",  color: "var(--err)"  },
-  running: { label: "running", color: "var(--info)" },
+  done:      { label: "done",      color: "var(--ok)"   },
+  blocked:   { label: "blocked",   color: "var(--warn)" },
+  failed:    { label: "failed",    color: "var(--err)"  },
+  running:   { label: "running",   color: "var(--info)" },
+  cancelled: { label: "cancelled", color: "var(--warn)" },
 };
 
 export function StatusPill({ status, size = "sm" }) {

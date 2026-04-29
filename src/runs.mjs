@@ -79,6 +79,7 @@ function summarizeRun(runId, events) {
   );
   const created = orderedEvents.find((event) => event.type === "task.created");
   const completed = orderedEvents.find((event) => event.type === "task.done");
+  const cancelled = orderedEvents.find((event) => event.type === "task.cancelled");
   const verification = lastEventOfType(orderedEvents, "verification.finished");
   const modelFinal = [...orderedEvents]
     .reverse()
@@ -96,15 +97,18 @@ function summarizeRun(runId, events) {
     lastValue(orderedEvents, (event) => event.data?.workerId) ??
     null;
   const createdAt = created?.timestamp ?? orderedEvents[0]?.timestamp ?? null;
-  const completedAt = completed?.timestamp ?? null;
+  const completedAt = cancelled?.timestamp ?? completed?.timestamp ?? null;
   const pending = derivePendingApproval(orderedEvents);
+  const status = cancelled
+    ? "cancelled"
+    : completed?.data?.status ?? "running";
 
   return {
     runId,
     goal: created?.data?.goal ?? null,
     providerId,
     workerId,
-    status: completed?.data?.status ?? "running",
+    status,
     createdAt,
     completedAt,
     durationMs: calculateDurationMs(createdAt, completedAt),

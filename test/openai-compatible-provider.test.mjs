@@ -109,6 +109,36 @@ test("OpenAI-compatible provider includes useful error details for non-2xx respo
   );
 });
 
+test("OpenAI-compatible provider forwards the AbortSignal to fetch", async () => {
+  const fakeFetch = createFakeFetch({
+    responseBody: {
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({ type: "final", content: "ok" }),
+          },
+        },
+      ],
+    },
+  });
+
+  const provider = createOpenAICompatibleProvider({
+    baseUrl: "http://api.test/v1",
+    model: "test-model",
+    fetchImpl: fakeFetch,
+  });
+
+  const controller = new AbortController();
+  await provider.complete({
+    task: { id: "task-4", goal: "inspect repo" },
+    transcript: [{ role: "user", content: "inspect repo" }],
+    tools: {},
+    signal: controller.signal,
+  });
+
+  assert.equal(fakeFetch.requests[0].signal, controller.signal);
+});
+
 function createFakeFetch({ statusCode = 200, responseBody }) {
   const requests = [];
   const fakeFetch = async (url, options) => {
@@ -117,6 +147,7 @@ function createFakeFetch({ statusCode = 200, responseBody }) {
       method: options.method,
       headers: options.headers,
       body: JSON.parse(options.body),
+      signal: options.signal,
     });
     return new Response(JSON.stringify(responseBody), {
       status: statusCode,

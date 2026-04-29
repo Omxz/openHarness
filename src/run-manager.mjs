@@ -26,6 +26,15 @@ export function createRunManager({
   }
 
   const activeRuns = new Map();
+  const controllers = new Map();
+  const pendingApprovalIds = new Map();
+  const cancellations = new Map();
+
+  function cleanup(runId) {
+    controllers.delete(runId);
+    pendingApprovalIds.delete(runId);
+    cancellations.delete(runId);
+  }
 
   return {
     approvalManager,
@@ -33,6 +42,8 @@ export function createRunManager({
       const request = normalizeRunRequest(input, config);
       const runId = randomUUID();
       const provider = createProvider(request.provider, config, request.goal);
+      const controller = new AbortController();
+      controllers.set(runId, controller);
 
       activeRuns.set(runId, {
         runId,
@@ -40,6 +51,15 @@ export function createRunManager({
         goal: request.goal,
         providerId: provider.id,
       });
+
+      const wrappedApprove = async (context) => {
+        pendingApprovalIds.set(runId, context.approvalId);
+        try {
+          return await approvalManager.approveToolUse(context);
+        } finally {
+          pendingApprovalIds.delete(runId);
+        }
+      };
 
       const promise = runTask({
         taskId: runId,
@@ -50,7 +70,8 @@ export function createRunManager({
         provider,
         tools,
         verifier,
-        approveToolUse: (context) => approvalManager.approveToolUse(context),
+        approveToolUse: wrappedApprove,
+        signal: controller.signal,
       })
         .then((result) => {
           activeRuns.set(runId, {
@@ -59,9 +80,33 @@ export function createRunManager({
             goal: request.goal,
             providerId: result.providerId,
           });
+          cleanup(runId);
           return result;
         })
         .catch(async (error) => {
+          if (cancellations.has(runId) || controller.signal.aborted) {
+            activeRuns.set(runId, {
+              runId,
+              status: "cancelled",
+              goal: request.goal,
+              providerId: provider.id,
+              reason: cancellations.get(runId) ?? "cancelled",
+            });
+            await appendEvent(
+              logPath,
+              createEvent({
+                taskId: runId,
+                actor: "system",
+                type: "task.cancelled",
+                data: {
+                  reason: cancellations.get(runId) ?? "cancelled",
+                },
+              }),
+            );
+            cleanup(runId);
+            return;
+          }
+
           activeRuns.set(runId, {
             runId,
             status: "blocked",
@@ -81,6 +126,7 @@ export function createRunManager({
               },
             }),
           );
+          cleanup(runId);
         });
 
       return {
@@ -88,6 +134,44 @@ export function createRunManager({
         status: "running",
         providerId: provider.id,
         promise,
+      };
+    },
+    cancelRun(runId, options = {}) {
+      const active = activeRuns.get(runId);
+      const controller = controllers.get(runId);
+      if (!active || !controller) {
+        return { ok: false, code: "not_found" };
+      }
+
+      const reason =
+        typeof options.reason === "string" && options.reason.trim()
+          ? options.reason.trim()
+          : "cancelled";
+      cancellations.set(runId, reason);
+
+      const approvalId = pendingApprovalIds.get(runId);
+      if (approvalId && approvalManager.cancel) {
+        approvalManager.cancel(approvalId, { reason });
+      }
+
+      controller.abort(reason);
+
+      const updated = {
+        ...active,
+        status: "cancelled",
+        reason,
+      };
+      activeRuns.set(runId, updated);
+
+      return {
+        ok: true,
+        summary: {
+          runId,
+          status: "cancelled",
+          goal: active.goal,
+          providerId: active.providerId,
+          reason,
+        },
       };
     },
     getActiveRuns() {
