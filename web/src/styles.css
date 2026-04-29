@@ -896,6 +896,73 @@ kbd {
 .verify-row .dim { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; min-width: 60px; }
 .verify-row code { color: var(--fg); }
 
+.activity-grid {
+  padding: 10px 14px 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.activity-card {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  padding: 9px 10px;
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--fg-3);
+  background: transparent;
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+.activity-card-active .activity-dot {
+  background: var(--info);
+  border-color: var(--info);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--info) 16%, transparent);
+}
+.activity-card-ok .activity-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.activity-card-warn .activity-dot {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+.activity-card-err .activity-dot {
+  background: var(--err);
+  border-color: var(--err);
+}
+.activity-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.activity-title {
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.activity-detail {
+  color: var(--fg-3);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .approval-panel {
   border-color: var(--warn);
 }

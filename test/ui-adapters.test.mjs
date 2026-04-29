@@ -1,8 +1,121 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { buildActivityCards } from "../web/src/lib/activity.js";
 import { adaptRun, pendingApprovalIndicator } from "../web/src/lib/adapt.js";
 import { summarize } from "../web/src/lib/events.js";
+
+test("operator activity cards summarize worker lifecycle and codex JSON events", () => {
+  const cards = buildActivityCards({
+    status: "running",
+    events: [
+      {
+        timestamp: "2026-04-29T12:00:00.000Z",
+        type: "task.created",
+        data: { goal: "inspect repo" },
+      },
+      {
+        timestamp: "2026-04-29T12:00:01.000Z",
+        type: "worker.started",
+        data: { workerId: "codex-worker" },
+      },
+      {
+        timestamp: "2026-04-29T12:00:02.000Z",
+        type: "worker.output",
+        data: {
+          stream: "stdout",
+          chunk:
+            '{"type":"thread.started","thread_id":"abc123"}\n' +
+            '{"type":"turn.started"}\n' +
+            '{"type":"exec_command.started","command":"npm test"}\n',
+        },
+      },
+      {
+        timestamp: "2026-04-29T12:00:03.000Z",
+        type: "verification.finished",
+        data: { result: { exitCode: 0 } },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    cards.map((card) => card.title),
+    [
+      "Task queued",
+      "Worker started",
+      "Session started",
+      "Planning",
+      "Running command",
+      "Verification passed",
+    ],
+  );
+  assert.equal(cards[4].detail, "npm test");
+  assert.equal(cards[4].tone, "active");
+});
+
+test("operator activity cards classify stderr warnings and plain stdout output", () => {
+  const cards = buildActivityCards({
+    events: [
+      {
+        timestamp: "2026-04-29T12:00:00.000Z",
+        type: "worker.output",
+        data: {
+          stream: "stderr",
+          chunk: "2026-04-29T12:00:00 WARN codex_core_skills::loader: ignored icon\n",
+        },
+      },
+      {
+        timestamp: "2026-04-29T12:00:01.000Z",
+        type: "worker.output",
+        data: { stream: "stdout", chunk: "Reading README.md\n" },
+      },
+    ],
+  });
+
+  assert.equal(cards[0].title, "Worker warning");
+  assert.equal(cards[0].tone, "warn");
+  assert.equal(cards[0].detail, "ignored icon");
+  assert.equal(cards[1].title, "Output");
+  assert.equal(cards[1].detail, "Reading README.md");
+});
+
+test("operator activity cards classify JSON worker failures as errors", () => {
+  const cards = buildActivityCards({
+    events: [
+      {
+        timestamp: "2026-04-29T12:00:00.000Z",
+        type: "worker.output",
+        data: {
+          stream: "stdout",
+          chunk:
+            '{"type":"error","message":"worker quit"}\n' +
+            '{"type":"turn.failed","error":{"message":"usage limit"}}\n',
+        },
+      },
+    ],
+  });
+
+  assert.equal(cards[0].title, "Worker error");
+  assert.equal(cards[0].detail, "worker quit");
+  assert.equal(cards[0].tone, "err");
+  assert.equal(cards[1].title, "Turn failed");
+  assert.equal(cards[1].detail, "usage limit");
+  assert.equal(cards[1].tone, "err");
+});
+
+test("operator activity cards keep the most recent activity bounded", () => {
+  const events = Array.from({ length: 16 }, (_, index) => ({
+    timestamp: new Date(Date.parse("2026-04-29T12:00:00.000Z") + index).toISOString(),
+    type: "worker.output",
+    data: { stream: "stdout", chunk: `line ${index}\n` },
+  }));
+
+  const cards = buildActivityCards({ events });
+
+  assert.equal(cards.length, 10);
+  assert.equal(cards[0].detail, "line 6");
+  assert.equal(cards.at(-1).detail, "line 15");
+});
 
 test("UI run adapter passes through partial worker output from the run summary", () => {
   const run = adaptRun({

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { pendingApprovalIndicator } from "../lib/adapt.js";
 import { approveApproval, cancelRun, denyApproval } from "../lib/api.js";
+import { buildActivityCards } from "../lib/activity.js";
 import { fmtDur, fmtTimeMs } from "../lib/format.js";
 import { StatusPill } from "./StatusPill.jsx";
 import { Timeline } from "./Timeline.jsx";
@@ -22,6 +23,7 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
   const showLiveOutput =
     run.status === "running" &&
     (run.partialStdout?.length || run.partialStderr?.length);
+  const activityCards = buildActivityCards(run);
 
   return (
     <section className="detail">
@@ -62,6 +64,10 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           </div>
         )}
       </div>
+
+      {activityCards.length > 0 && (
+        <OperatorActivityPanel cards={activityCards} running={run.status === "running"} />
+      )}
 
       {showLiveOutput && (
         <div className="panel" data-testid="live-worker-output">
@@ -132,6 +138,33 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
         <Timeline events={run.events} onPick={onPickEvent} pickedTs={pickedEvent?.timestamp} />
       </div>
     </section>
+  );
+}
+
+function OperatorActivityPanel({ cards, running }) {
+  return (
+    <div className="panel" data-testid="operator-activity">
+      <div className="panel-head">
+        <span className="panel-title">Operator activity</span>
+        <span className="panel-sub">
+          {running ? "live" : "latest"} · {cards.length} cards
+        </span>
+      </div>
+      <div className="activity-grid">
+        {cards.map((card) => (
+          <div
+            key={card.id}
+            className={`activity-card activity-card-${card.tone ?? "idle"}`}
+          >
+            <span className="activity-dot" aria-hidden />
+            <div className="activity-copy">
+              <span className="activity-title">{card.title}</span>
+              {card.detail && <span className="activity-detail">{card.detail}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
