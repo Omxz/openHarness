@@ -21,10 +21,7 @@ import {
 import { formatRunDetail, formatRunList, getRun, listRuns } from "../src/runs.mjs";
 import { startApiServer } from "../src/server.mjs";
 import { createDefaultTools } from "../src/tools.mjs";
-import {
-  createClaudeWorkerProvider,
-  createCodexWorkerProvider,
-} from "../src/workers.mjs";
+import { createWorker, isWorkerProvider } from "../src/workers.mjs";
 
 const HELP = `Usage: harness <command>
 
@@ -352,20 +349,4 @@ function createProvider(providerName, config, goal) {
   }
 
   throw new Error(`Unsupported provider "${providerName}"`);
-}
-
-function createWorker(providerName, config) {
-  if (providerName === "codex-worker") {
-    return createCodexWorkerProvider(config.workers["codex-worker"]);
-  }
-
-  if (providerName === "claude-worker") {
-    return createClaudeWorkerProvider(config.workers["claude-worker"]);
-  }
-
-  throw new Error(`Unsupported worker "${providerName}"`);
-}
-
-function isWorkerProvider(providerName) {
-  return providerName === "codex-worker" || providerName === "claude-worker";
 }

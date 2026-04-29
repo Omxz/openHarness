@@ -23,7 +23,7 @@ export function createCodexWorkerProvider({
       usesSubscriptionAuth: true,
       rawCompletion: false,
     },
-    async runTask({ task }) {
+    async runTask({ task, signal } = {}) {
       const prompt = buildCodexPrompt(task);
       const finalArgs = [
         ...args,
@@ -36,6 +36,7 @@ export function createCodexWorkerProvider({
       const result = await processRunner(command, finalArgs, {
         cwd: task.workspace,
         input: prompt,
+        signal,
       });
       const output = (result.stdout || result.stderr || "").trim();
 
@@ -67,7 +68,7 @@ export function createClaudeWorkerProvider({
       usesSubscriptionAuth: true,
       rawCompletion: false,
     },
-    async runTask({ task }) {
+    async runTask({ task, signal } = {}) {
       const prompt = buildClaudePrompt(task);
       const finalArgs = [
         ...args,
@@ -77,6 +78,7 @@ export function createClaudeWorkerProvider({
       ];
       const result = await processRunner(command, finalArgs, {
         cwd: task.workspace,
+        signal,
       });
       const output = (result.stdout || result.stderr || "").trim();
 
@@ -146,8 +148,25 @@ export async function detectClaudeAuth({
   };
 }
 
-export function runProcess(command, args, { cwd, input } = {}) {
+// Grace period after SIGTERM before escalating to SIGKILL. This is a real
+// UX/safety trade-off:
+//   - Too short: Codex/Claude CLIs lose their final flush and the audit log
+//     misses the last few stdout chunks.
+//   - Too long: a hung subprocess holds the run in "cancelling" state and
+//     operators wait longer than expected after pressing Cancel.
+// 2 seconds is a reasonable default for both CLIs. If your operators need
+// faster cancellation feedback, drop to 500-1000ms; if your workers tend to
+// produce large final outputs that take longer to flush, raise it.
+const SUBPROCESS_GRACE_MS = 2000;
+
+export function runProcess(command, args, { cwd, input, signal } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      const err = new Error(signal.reason ?? "aborted");
+      err.name = "AbortError";
+      return reject(err);
+    }
+
     const child = spawn(command, args, {
       cwd,
       shell: false,
@@ -155,6 +174,8 @@ export function runProcess(command, args, { cwd, input } = {}) {
     });
     let stdout = "";
     let stderr = "";
+    let aborted = false;
+    let killTimer;
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
@@ -162,8 +183,38 @@ export function runProcess(command, args, { cwd, input } = {}) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+      if (killTimer) clearTimeout(killTimer);
+      reject(error);
+    });
+
+    let onAbort;
+    if (signal) {
+      onAbort = () => {
+        aborted = true;
+        if (child.exitCode !== null || child.killed) return;
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          if (child.exitCode === null && !child.killed) {
+            child.kill("SIGKILL");
+          }
+        }, SUBPROCESS_GRACE_MS);
+        killTimer.unref?.();
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     child.on("close", (exitCode) => {
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+      if (killTimer) clearTimeout(killTimer);
+      if (aborted) {
+        const err = new Error(signal?.reason ?? "aborted");
+        err.name = "AbortError";
+        err.partialStdout = stdout;
+        err.partialStderr = stderr;
+        return reject(err);
+      }
       resolve({
         exitCode,
         stdout,
@@ -176,6 +227,20 @@ export function runProcess(command, args, { cwd, input } = {}) {
     }
     child.stdin.end();
   });
+}
+
+export function createWorker(providerName, config) {
+  if (providerName === "codex-worker") {
+    return createCodexWorkerProvider(config?.workers?.["codex-worker"] ?? {});
+  }
+  if (providerName === "claude-worker") {
+    return createClaudeWorkerProvider(config?.workers?.["claude-worker"] ?? {});
+  }
+  throw new Error(`Unsupported worker "${providerName}"`);
+}
+
+export function isWorkerProvider(providerName) {
+  return providerName === "codex-worker" || providerName === "claude-worker";
 }
 
 function buildCodexPrompt(task) {

@@ -140,6 +140,124 @@ test("createRunManager.cancelRun clears a pending approval and finishes the run 
   }
 });
 
+test("createRunManager dispatches worker runs and reports the workerId as providerId", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "openharness-rm-worker-"));
+  const logPath = join(workspace, "events.jsonl");
+  const calls = [];
+  const fakeWorker = {
+    id: "codex-worker",
+    async runTask({ task, signal }) {
+      calls.push({ taskId: task.id, hasSignal: !!signal });
+      return {
+        workerId: "codex-worker",
+        command: "codex",
+        args: ["exec"],
+        exitCode: 0,
+        stdout: "worker output",
+        stderr: "",
+        output: "worker output",
+      };
+    },
+  };
+
+  const manager = createRunManager({
+    workspace,
+    logPath,
+    config: normalizeConfig({}),
+    verifier: { command: "node", args: ["--version"] },
+    workerFactory: () => fakeWorker,
+  });
+
+  const run = manager.startRun({
+    goal: "delegate to codex",
+    provider: "codex-worker",
+    privacyMode: "ask-before-api",
+  });
+
+  assert.equal(run.providerId, "codex-worker");
+  const result = await run.promise;
+  assert.equal(result.status, "done");
+  assert.equal(result.taskId, run.runId);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].hasSignal, true);
+
+  const events = await readEvents(logPath);
+  assert.deepEqual(
+    Array.from(new Set(events.map((event) => event.taskId))),
+    [run.runId],
+  );
+  const types = events.map((e) => e.type);
+  assert.ok(types.includes("worker.started"));
+  assert.ok(types.includes("worker.finished"));
+  assert.ok(types.includes("task.done"));
+});
+
+test("createRunManager.cancelRun aborts a running worker subprocess and emits worker.cancelled", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "openharness-rm-worker-cancel-"));
+  const logPath = join(workspace, "events.jsonl");
+  let receivedSignal = null;
+  let resolveStarted;
+  const startedPromise = new Promise((resolve) => {
+    resolveStarted = resolve;
+  });
+
+  const fakeWorker = {
+    id: "codex-worker",
+    runTask({ signal }) {
+      receivedSignal = signal;
+      return new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          err.partialStdout = "in-flight";
+          err.partialStderr = "";
+          reject(err);
+        });
+        // Signal back to the test that the worker has begun and is now waiting
+        // on the abort signal — only then is it safe to cancel.
+        resolveStarted();
+      });
+    },
+  };
+
+  const manager = createRunManager({
+    workspace,
+    logPath,
+    config: normalizeConfig({}),
+    verifier: { command: "node", args: ["--version"] },
+    workerFactory: () => fakeWorker,
+  });
+
+  const run = manager.startRun({
+    goal: "long-running worker task",
+    provider: "codex-worker",
+    privacyMode: "ask-before-api",
+  });
+
+  await startedPromise;
+
+  const cancel = manager.cancelRun(run.runId, { reason: "user cancelled" });
+  assert.equal(cancel.ok, true);
+  assert.equal(cancel.summary.status, "cancelled");
+
+  await run.promise;
+
+  assert.ok(receivedSignal, "worker should have received a signal");
+
+  const events = await readEvents(logPath);
+  assert.deepEqual(
+    Array.from(new Set(events.map((event) => event.taskId))),
+    [run.runId],
+  );
+  const types = events.map((e) => e.type);
+  assert.ok(types.includes("worker.started"));
+  assert.ok(types.includes("worker.cancelled"));
+  assert.ok(types.includes("task.cancelled"));
+  const workerCancelled = events.find((e) => e.type === "worker.cancelled");
+  assert.equal(workerCancelled.data.stage, "during-run");
+  assert.equal(workerCancelled.data.partialStdout, "in-flight");
+});
+
 test("createRunManager.cancelRun returns not_found for unknown run ids", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "openharness-cancel-missing-"));
   const logPath = join(workspace, "events.jsonl");

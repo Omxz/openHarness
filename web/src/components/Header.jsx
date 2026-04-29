@@ -1,6 +1,16 @@
 import { useMemo } from "react";
 
-export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }) {
+export function Header({
+  runs,
+  autoRefresh,
+  setAutoRefresh,
+  logPath,
+  onNewTask,
+  theme,
+  onToggleTheme,
+  inspectorOpen,
+  onToggleInspector,
+}) {
   const counts = useMemo(() => {
     const c = { done: 0, blocked: 0, failed: 0, running: 0, cancelled: 0 };
     for (const r of runs) {
@@ -8,6 +18,7 @@ export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }
     }
     return c;
   }, [runs]);
+  const nextTheme = theme === "dark" ? "light" : "dark";
 
   return (
     <header className="hdr">
@@ -41,12 +52,39 @@ export function Header({ runs, autoRefresh, setAutoRefresh, logPath, onNewTask }
           {autoRefresh ? "Streaming" : "Paused"}
         </button>
         {logPath && <code className="logpath" title={logPath}>{logPath}</code>}
+        {onToggleInspector && (
+          <button
+            type="button"
+            className={`theme-toggle${inspectorOpen ? " is-on" : ""}`}
+            onClick={onToggleInspector}
+            title={`${inspectorOpen ? "Hide" : "Show"} inspector (i)`}
+            aria-label={`${inspectorOpen ? "Hide" : "Show"} inspector`}
+            data-testid="inspector-toggle"
+            aria-pressed={inspectorOpen ? "true" : "false"}
+          >
+            ⊞
+          </button>
+        )}
+        {onToggleTheme && (
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={onToggleTheme}
+            title={`Switch to ${nextTheme} theme`}
+            aria-label={`Switch to ${nextTheme} theme`}
+            data-testid="theme-toggle"
+          >
+            {theme === "dark" ? "☾" : "☀"}
+          </button>
+        )}
         <button
           className="btn btn-primary"
           onClick={onNewTask}
-          title="Focus task composer"
+          title="Open launcher (⌘K or N)"
+          data-testid="new-task"
         >
           + New task
+          <kbd>⌘K</kbd>
         </button>
       </div>
     </header>

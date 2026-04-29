@@ -76,6 +76,69 @@ test("Codex worker captures nonzero exits without throwing", async () => {
   assert.equal(result.stderr, "not authenticated");
 });
 
+test("Codex worker forwards an AbortSignal into runProcess", async () => {
+  let receivedSignal = null;
+  const provider = createCodexWorkerProvider({
+    runProcess: async (command, args, options) => {
+      receivedSignal = options.signal;
+      return { exitCode: 0, stdout: "ok", stderr: "" };
+    },
+  });
+
+  const controller = new AbortController();
+  await provider.runTask({
+    task: {
+      id: "task-signal",
+      goal: "inspect",
+      workspace: "/tmp",
+      privacyMode: "ask-before-api",
+    },
+    signal: controller.signal,
+  });
+
+  assert.ok(receivedSignal, "runProcess should receive a signal");
+  assert.equal(receivedSignal.aborted, false);
+});
+
+test("Codex worker rejects when signal aborts mid-run", async () => {
+  const provider = createCodexWorkerProvider({
+    // Simulate a long-running subprocess: only resolves once the signal aborts.
+    runProcess: (command, args, options) =>
+      new Promise((_, reject) => {
+        if (options.signal?.aborted) {
+          const err = new Error("aborted-before-call");
+          err.name = "AbortError";
+          return reject(err);
+        }
+        options.signal?.addEventListener("abort", () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          err.partialStdout = "in-flight output";
+          err.partialStderr = "";
+          reject(err);
+        });
+      }),
+  });
+
+  const controller = new AbortController();
+  const promise = provider.runTask({
+    task: {
+      id: "task-cancel",
+      goal: "inspect",
+      workspace: "/tmp",
+      privacyMode: "ask-before-api",
+    },
+    signal: controller.signal,
+  });
+
+  controller.abort("user cancelled");
+  await assert.rejects(promise, (err) => {
+    assert.equal(err.name, "AbortError");
+    assert.equal(err.partialStdout, "in-flight output");
+    return true;
+  });
+});
+
 test("detectCodexWorker reports availability from command version check", async () => {
   const available = await detectCodexWorker({
     command: "codex",

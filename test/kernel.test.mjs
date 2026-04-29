@@ -385,6 +385,88 @@ test("runTask blocks denied risky tools", async () => {
   assert.equal(approval.data.reason, "user denied");
 });
 
+test("runWorkerTask logs worker.cancelled and returns cancelled when signal aborts mid-run", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-cancel-"));
+  const logPath = join(workspace, "events.jsonl");
+  const controller = new AbortController();
+  const worker = {
+    id: "test:worker",
+    async runTask({ task, signal }) {
+      // Simulate a long-running subprocess that aborts when signal fires.
+      return new Promise((_, reject) => {
+        signal?.addEventListener("abort", () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          err.partialStdout = "partial output";
+          err.partialStderr = "";
+          reject(err);
+        });
+        // Trigger the abort on the next tick so the test stays fast.
+        setImmediate(() => controller.abort("user cancelled"));
+      });
+    },
+  };
+
+  const result = await runWorkerTask({
+    goal: "inspect",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: { command: "node", args: ["--version"] },
+    signal: controller.signal,
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.final, null);
+  assert.equal(result.verification, null);
+
+  const events = await readEvents(logPath);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["task.created", "worker.started", "worker.cancelled"],
+  );
+  const cancelled = events.at(-1);
+  assert.equal(cancelled.data.workerId, "test:worker");
+  assert.equal(cancelled.data.stage, "during-run");
+  assert.equal(cancelled.data.partialStdout, "partial output");
+});
+
+test("runWorkerTask exits before spawning when signal is already aborted", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-pre-abort-"));
+  const logPath = join(workspace, "events.jsonl");
+  const controller = new AbortController();
+  controller.abort("aborted before start");
+  let spawned = false;
+  const worker = {
+    id: "test:worker",
+    async runTask() {
+      spawned = true;
+      return { exitCode: 0, stdout: "", stderr: "", output: "" };
+    },
+  };
+
+  const result = await runWorkerTask({
+    goal: "inspect",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: { command: "node", args: ["--version"] },
+    signal: controller.signal,
+  });
+
+  assert.equal(spawned, false, "worker should not spawn when signal is already aborted");
+  assert.equal(result.status, "cancelled");
+
+  const events = await readEvents(logPath);
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["task.created", "worker.cancelled"],
+  );
+  assert.equal(events.at(-1).data.stage, "before-spawn");
+});
+
 test("runWorkerTask delegates to a worker, logs events, verifies, and returns final output", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-worker-"));
   const logPath = join(workspace, "events.jsonl");

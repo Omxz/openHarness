@@ -22,6 +22,10 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
 
   return (
     <section className="detail">
+      {run.pendingApproval && (
+        <PendingApprovalPanel run={run} />
+      )}
+
       <div className="detail-head">
         <div className="detail-head-top">
           <StatusPill status={run.status} size="md" />
@@ -47,19 +51,6 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           <KV k="model"    v={run.model ? <code>{run.model}</code> : <span className="dim">—</span>} />
           <KV k="config"   v={run.config ? <code>{run.config}</code> : <span className="dim">—</span>} />
           <KV k="exit"     v={run.exitCode != null ? <code>{run.exitCode}</code> : <span className="dim">—</span>} />
-          <KV k="events"   v={<code>{run.eventCount}</code>} />
-          <KV
-            k="verify"
-            v={
-              run.verification
-                ? (
-                    <span style={{ color: run.verification.exitCode === 0 ? "var(--ok)" : "var(--err)" }}>
-                      {run.verification.exitCode === 0 ? "passed" : "failed"}
-                    </span>
-                  )
-                : <span className="dim">none</span>
-            }
-          />
         </div>
         {run.reason && (
           <div className="reason" style={{ color: STATUS_COLOR[run.status] }}>
@@ -68,10 +59,6 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
           </div>
         )}
       </div>
-
-      {run.pendingApproval && (
-        <PendingApprovalPanel run={run} />
-      )}
 
       {run.final && (
         <div className="panel">

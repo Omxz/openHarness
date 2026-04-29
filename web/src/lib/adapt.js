@@ -34,6 +34,42 @@ export function adaptRuns(runs) {
   return (runs ?? []).map(adaptRun);
 }
 
+// Returns "active" | "needs-you" | "recent" for a single run.
+//
+// This is the load-bearing product decision in the redesign — what counts as
+// "happening right now" versus "needs human action" versus "history." The
+// current rules are a sensible default; refine them based on how operators
+// actually use the dashboard:
+//   - Should runs that finished <30s ago linger in `active` so users see the
+//     completion before the row drops to `recent`?
+//   - Should `failed` go to `needs-you` (because someone should investigate)
+//     or `recent` (because nothing they can do)?
+//   - Are there other states (e.g. retrying) we should fold in?
+export function attentionBucket(run) {
+  if (!run) return "recent";
+  if (run.pendingApproval) return "needs-you";
+  if (run.status === "running") return "active";
+  if (run.status === "blocked") return "needs-you";
+  return "recent";
+}
+
+export function groupRunsByAttention(runs) {
+  const groups = { active: [], "needs-you": [], recent: [] };
+  for (const run of runs ?? []) {
+    groups[attentionBucket(run)].push(run);
+  }
+  return groups;
+}
+
+export function attentionCounts(runs) {
+  const groups = groupRunsByAttention(runs);
+  return {
+    active: groups.active.length,
+    needsYou: groups["needs-you"].length,
+    recent: groups.recent.length,
+  };
+}
+
 // Returns the data needed to render the pending-approval indicator, or null
 // when nothing is awaiting a decision.
 export function pendingApprovalIndicator(run) {

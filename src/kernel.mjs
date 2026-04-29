@@ -222,15 +222,17 @@ export async function runTask({
 }
 
 export async function runWorkerTask({
+  taskId = randomUUID(),
   goal,
   workspace,
   logPath,
   privacyMode = "ask-before-api",
   worker,
   verifier,
+  signal,
 }) {
   const task = {
-    id: randomUUID(),
+    id: taskId,
     goal,
     workspace,
     privacyMode,
@@ -243,6 +245,21 @@ export async function runWorkerTask({
     type: "task.created",
     data: { goal, workspace, privacyMode, workerId: worker.id },
   });
+
+  if (signal?.aborted) {
+    await log(logPath, {
+      taskId: task.id,
+      actor: "system",
+      type: "worker.cancelled",
+      data: {
+        workerId: worker.id,
+        reason: signal.reason ?? "aborted-before-spawn",
+        stage: "before-spawn",
+      },
+    });
+    return cancelledResult(task, worker);
+  }
+
   await log(logPath, {
     taskId: task.id,
     actor: "system",
@@ -250,7 +267,28 @@ export async function runWorkerTask({
     data: { workerId: worker.id },
   });
 
-  const workerResult = await worker.runTask({ task });
+  let workerResult;
+  try {
+    workerResult = await worker.runTask({ task, signal });
+  } catch (error) {
+    if (error?.name === "AbortError" || signal?.aborted) {
+      await log(logPath, {
+        taskId: task.id,
+        actor: "system",
+        type: "worker.cancelled",
+        data: {
+          workerId: worker.id,
+          reason: error?.message ?? signal?.reason ?? "aborted",
+          stage: "during-run",
+          partialStdout: error?.partialStdout ?? null,
+          partialStderr: error?.partialStderr ?? null,
+        },
+      });
+      return cancelledResult(task, worker);
+    }
+    throw error;
+  }
+
   await log(logPath, {
     taskId: task.id,
     actor: "worker",
@@ -282,6 +320,17 @@ export async function runWorkerTask({
     final: workerResult.output,
     worker: workerResult,
     verification,
+  };
+}
+
+function cancelledResult(task, worker) {
+  return {
+    taskId: task.id,
+    status: "cancelled",
+    workerId: worker.id,
+    final: null,
+    worker: null,
+    verification: null,
   };
 }
 

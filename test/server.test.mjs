@@ -37,6 +37,47 @@ test("API server exposes health and run list endpoints", async () => {
   }
 });
 
+test("API server reports worker readiness at GET /api/health/workers", async () => {
+  const logPath = await createLog([]);
+  let calls = 0;
+  const fakeWorkerHealth = async () => {
+    calls += 1;
+    return {
+      codex: { available: true, command: "codex", detail: "codex 0.5.0" },
+      claude: {
+        available: true,
+        command: "claude",
+        detail: "claude 1.2.0",
+        authenticated: false,
+        authDetail: "not logged in",
+      },
+    };
+  };
+
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    workerHealth: fakeWorkerHealth,
+  });
+
+  try {
+    const body = await getJson(`${api.url}/api/health/workers`);
+
+    assert.equal(calls, 1);
+    assert.deepEqual(body.codex, {
+      available: true,
+      command: "codex",
+      detail: "codex 0.5.0",
+    });
+    assert.equal(body.claude.available, true);
+    assert.equal(body.claude.authenticated, false);
+    assert.equal(body.claude.authDetail, "not logged in");
+  } finally {
+    await api.close();
+  }
+});
+
 test("API server starts a scripted run from POST /api/runs", async () => {
   const logPath = await createLog([]);
   const workspace = await mkdtemp(join(tmpdir(), "openharness-api-workspace-"));
@@ -92,7 +133,7 @@ test("API server validates run creation requests", async () => {
     const unsupportedProvider = await fetch(`${api.url}/api/runs`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ goal: "go", provider: "codex-worker" }),
+      body: JSON.stringify({ goal: "go", provider: "made-up-provider" }),
     });
     const invalidJson = await fetch(`${api.url}/api/runs`, {
       method: "POST",
@@ -108,7 +149,7 @@ test("API server validates run creation requests", async () => {
     assert.deepEqual(await unsupportedProvider.json(), {
       error: {
         code: "invalid_request",
-        message: 'Unsupported run provider "codex-worker"',
+        message: 'Unsupported run provider "made-up-provider"',
       },
     });
     assert.equal(invalidJson.status, 400);

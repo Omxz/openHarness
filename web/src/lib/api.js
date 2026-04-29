@@ -6,6 +6,12 @@ export async function fetchHealth() {
   return r.json();
 }
 
+export async function fetchWorkerHealth({ fetchImpl = fetch } = {}) {
+  const r = await fetchImpl(`${BASE}/health/workers`);
+  if (!r.ok) throw new Error(`/api/health/workers ${r.status}`);
+  return r.json();
+}
+
 export async function fetchRuns() {
   const r = await fetch(`${BASE}/runs`);
   if (!r.ok) throw new Error(`/api/runs ${r.status}`);

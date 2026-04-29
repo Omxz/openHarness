@@ -6,6 +6,11 @@ import { fileURLToPath } from "node:url";
 import { normalizeConfig } from "./config.mjs";
 import { createRunManager } from "./run-manager.mjs";
 import { getRun, listRuns } from "./runs.mjs";
+import {
+  detectClaudeAuth,
+  detectClaudeWorker,
+  detectCodexWorker,
+} from "./workers.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 4317;
@@ -38,6 +43,7 @@ export async function startApiServer({
   runManager,
   uiDist = UI_DIST,
   eventStreamPollMs = 1000,
+  workerHealth = defaultWorkerHealth,
 } = {}) {
   if (!logPath) {
     throw new Error("startApiServer requires logPath");
@@ -52,6 +58,8 @@ export async function startApiServer({
       runManager: manager,
       uiDist,
       eventStreamPollMs,
+      workerHealth,
+      config,
     }).catch((error) => {
       sendJson(response, 500, {
         error: {
@@ -82,6 +90,8 @@ async function handleRequest({
   runManager,
   uiDist,
   eventStreamPollMs,
+  workerHealth,
+  config,
 }) {
   setCorsHeaders(response);
 
@@ -196,6 +206,12 @@ async function handleRequest({
       },
       logPath,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/health/workers") {
+    const result = await workerHealth({ config });
+    sendJson(response, 200, result);
     return;
   }
 
@@ -571,6 +587,53 @@ function isAllowedRequestOrigin(request) {
     return new URL(origin).host === host;
   } catch {
     return false;
+  }
+}
+
+async function defaultWorkerHealth({ config } = {}) {
+  const codexCommand = config?.workers?.["codex-worker"]?.command ?? "codex";
+  const claudeCommand = config?.workers?.["claude-worker"]?.command ?? "claude";
+
+  const [codex, claude, claudeAuth] = await Promise.all([
+    safeDetect(() => detectCodexWorker({ command: codexCommand }), { command: codexCommand }),
+    safeDetect(() => detectClaudeWorker({ command: claudeCommand }), { command: claudeCommand }),
+    safeDetect(() => detectClaudeAuth({ command: claudeCommand }), { command: claudeCommand }),
+  ]);
+
+  return {
+    codex: {
+      available: codex.available,
+      command: codex.command,
+      detail: codex.detail,
+    },
+    claude: {
+      available: claude.available,
+      command: claude.command,
+      detail: claude.detail,
+      authenticated: claudeAuth.available,
+      authDetail: claudeAuth.detail,
+    },
+  };
+}
+
+async function safeDetect(detect, fallback, timeoutMs = 3000) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      resolve({ available: false, command: fallback.command, detail: "detection timed out" });
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      detect().catch((error) => ({
+        available: false,
+        command: fallback.command,
+        detail: error?.message ?? "detection failed",
+      })),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -1,9 +1,12 @@
 /* ─── tokens ───────────────────────────────────────────────────────────── */
-:root {
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+
   --bg:        oklch(0.18 0.005 80);
   --bg-1:      oklch(0.21 0.005 80);
   --bg-2:      oklch(0.24 0.006 80);
   --bg-3:      oklch(0.28 0.007 80);
+  --bg-glow:   oklch(0.24 0.01 80);
   --line:      oklch(0.32 0.008 80);
   --line-2:    oklch(0.40 0.01 80);
   --fg:        oklch(0.95 0.005 80);
@@ -17,6 +20,10 @@
   --warn:      oklch(0.80 0.14 75);
   --err:       oklch(0.70 0.18 25);
   --info:      oklch(0.78 0.10 230);
+
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.30), 0 1px 1px oklch(0 0 0 / 0.18);
+  --shadow-2: 0 6px 16px oklch(0 0 0 / 0.36), 0 2px 4px oklch(0 0 0 / 0.20);
+  --shadow-3: 0 16px 40px oklch(0 0 0 / 0.46), 0 4px 10px oklch(0 0 0 / 0.24);
 
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: "Inter", -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -32,7 +39,43 @@
   --fs-sm: 13px;
   --fs-md: 14px;
   --fs-lg: 16px;
+  --fs-display: 22px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --dur-quick: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }
+
+/* Light theme — explicit override or prefers-color-scheme default. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:        oklch(0.985 0.004 80);
+  --bg-1:      oklch(0.965 0.005 80);
+  --bg-2:      oklch(0.935 0.006 80);
+  --bg-3:      oklch(0.895 0.007 80);
+  --bg-glow:   oklch(0.94 0.012 80);
+  --line:      oklch(0.86 0.008 80);
+  --line-2:    oklch(0.78 0.010 80);
+  --fg:        oklch(0.22 0.012 80);
+  --fg-2:      oklch(0.38 0.012 80);
+  --fg-3:      oklch(0.52 0.012 80);
+  --dim:       oklch(0.62 0.012 80);
+  --accent:    #a86a2c;
+  --accent-fg: oklch(0.99 0.005 80);
+
+  --ok:        oklch(0.50 0.17 150);
+  --warn:      oklch(0.58 0.17 75);
+  --err:       oklch(0.52 0.20 25);
+  --info:      oklch(0.50 0.15 230);
+
+  --shadow-1: 0 1px 2px oklch(0.20 0.01 80 / 0.10), 0 1px 1px oklch(0.20 0.01 80 / 0.06);
+  --shadow-2: 0 6px 16px oklch(0.20 0.01 80 / 0.14), 0 2px 4px oklch(0.20 0.01 80 / 0.08);
+  --shadow-3: 0 16px 40px oklch(0.20 0.01 80 / 0.20), 0 4px 10px oklch(0.20 0.01 80 / 0.12);
+}
+
 :root[data-density="compact"]     { --pad: 8px;  --pad-tight: 5px;  --row-gap: 3px; --fs-md: 12px; --fs-sm: 11px; }
 :root[data-density="comfortable"] { --pad: 12px; --pad-tight: 8px;  --row-gap: 6px; }
 :root[data-density="roomy"]       { --pad: 18px; --pad-tight: 12px; --row-gap: 10px; --fs-md: 14px; --fs-sm: 13px; }
@@ -46,10 +89,21 @@ body {
   font-size: var(--fs-md);
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out);
 }
 code, pre { font-family: var(--mono); font-size: var(--fs-sm); }
 button { font-family: inherit; }
 ::selection { background: var(--accent); color: var(--accent-fg); }
+
+/* Sentence-case label primitive. Prefer over uppercase-mono for prose labels. */
+.label-soft {
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg-3);
+}
 
 /* ─── app shell ────────────────────────────────────────────────────────── */
 .app {
@@ -57,8 +111,9 @@ button { font-family: inherit; }
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   background:
-    radial-gradient(1200px 600px at 20% -10%, oklch(0.24 0.01 80) 0%, transparent 60%),
+    radial-gradient(1200px 600px at 20% -10%, var(--bg-glow) 0%, transparent 60%),
     var(--bg);
+  transition: background-color var(--dur-base) var(--ease-out);
 }
 
 /* ─── header ───────────────────────────────────────────────────────────── */
@@ -140,7 +195,7 @@ button { font-family: inherit; }
   background: var(--bg-2); border: 1px solid var(--line); color: var(--fg);
   padding: 6px 12px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm);
   display: inline-flex; align-items: center; gap: 6px;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 .btn:hover { background: var(--bg-3); border-color: var(--line-2); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -151,12 +206,170 @@ button { font-family: inherit; }
 .btn-sm      { padding: 4px 9px; font-size: var(--fs-xs); }
 kbd {
   font-family: var(--mono); font-size: 10px;
-  background: color-mix(in oklab, white 8%, transparent);
-  border: 1px solid color-mix(in oklab, white 14%, transparent);
+  background: color-mix(in oklab, currentColor 10%, transparent);
+  border: 1px solid color-mix(in oklab, currentColor 18%, transparent);
   padding: 1px 4px; border-radius: 3px; margin-left: 2px;
 }
 
-/* ─── task composer ───────────────────────────────────────────────────── */
+/* Theme toggle button — sits alongside other header chrome. */
+.theme-toggle {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--fg-2);
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  transition: background var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+.theme-toggle:hover { background: var(--bg-3); color: var(--fg); border-color: var(--line-2); }
+
+/* ─── slide-over ──────────────────────────────────────────────────────── */
+.slide-over-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.slide-over-backdrop {
+  position: absolute;
+  inset: 0;
+  background: oklch(0 0 0 / 0.45);
+  animation: slide-fade-in var(--dur-base) var(--ease-out);
+}
+.slide-over {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--slide-over-width, 420px);
+  max-width: 100vw;
+  background: var(--bg-1);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.slide-over-right { right: 0; animation: slide-in-right var(--dur-base) var(--ease-out); }
+.slide-over-left  { left: 0;  animation: slide-in-left  var(--dur-base) var(--ease-out); }
+.slide-over-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+.slide-over-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--fg);
+}
+.slide-over-close {
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  font-size: 22px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+.slide-over-close:hover { color: var(--fg); background: var(--bg-3); }
+.slide-over-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 18px 24px;
+}
+
+@keyframes slide-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* ─── launcher (was task composer) ────────────────────────────────────── */
+.launcher {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.launcher .composer-goal,
+.launcher .composer-field { gap: 6px; }
+.launcher textarea,
+.launcher select {
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  outline: 0;
+  font-family: inherit;
+}
+.launcher textarea {
+  min-height: 80px;
+  max-height: 220px;
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.4;
+  font-size: var(--fs-sm);
+}
+.launcher select {
+  height: 36px;
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+}
+.launcher textarea:focus,
+.launcher select:focus { border-color: var(--accent); }
+.launcher-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.launcher-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.launcher-error {
+  color: var(--err);
+  font-size: var(--fs-sm);
+}
+.launcher-readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--fg-3);
+  margin-top: 2px;
+}
+.launcher-readiness-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.launcher-readiness-ok   { color: var(--ok); }
+.launcher-readiness-warn { color: var(--warn); }
+
+/* ─── task composer (legacy class kept for any embedded use) ──────────── */
 .task-composer {
   border-bottom: 1px solid var(--line);
   background: var(--bg);
@@ -174,10 +387,11 @@ kbd {
   min-width: 0;
 }
 .composer-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
 }
 .task-composer textarea,
@@ -246,6 +460,125 @@ kbd {
   }
 }
 
+/* ─── status strip ────────────────────────────────────────────────────── */
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  flex-wrap: wrap;
+}
+.status-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--fg-3);
+  font-size: var(--fs-sm);
+  transition: background var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+}
+.status-segment:hover { background: var(--bg-2); color: var(--fg-2); }
+.status-segment .status-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--fg-3);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.status-segment .status-count {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--fg-2);
+  font-size: var(--fs-sm);
+  min-width: 14px;
+  text-align: right;
+}
+.status-segment .status-label { color: var(--fg-3); }
+
+.status-attention.is-active { color: var(--warn); }
+.status-attention.is-active .status-glyph { background: color-mix(in oklab, var(--warn) 22%, transparent); color: var(--warn); }
+.status-attention.is-active .status-count { color: var(--warn); }
+.status-attention.is-active .status-label { color: var(--fg); }
+
+.status-running.is-active { color: var(--info); }
+.status-running.is-active .status-count { color: var(--info); }
+.status-running.is-active .status-label { color: var(--fg); }
+.status-running .status-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-3);
+  display: inline-block;
+}
+.status-running.is-active .status-pulse {
+  background: var(--info);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--info) 40%, transparent);
+  animation: status-pulse 1.6s ease-out infinite;
+}
+@keyframes status-pulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--info) 50%, transparent); }
+  100% { box-shadow: 0 0 0 8px color-mix(in oklab, var(--info) 0%, transparent); }
+}
+
+.status-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+}
+
+.status-readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  font-size: var(--fs-sm);
+}
+.status-readiness-label {
+  color: var(--fg-3);
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+}
+.worker-light {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-3);
+  font-size: var(--fs-sm);
+}
+.worker-light-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid color-mix(in oklab, currentColor 40%, transparent);
+}
+.worker-light-on    { color: var(--ok);   }
+.worker-light-on    .worker-light-dot { background: var(--ok); border-color: var(--ok); }
+.worker-light-warn  { color: var(--warn); }
+.worker-light-warn  .worker-light-dot { background: var(--warn); border-color: var(--warn); }
+.worker-light-off   { color: var(--dim); }
+.worker-light-off   .worker-light-dot { background: transparent; border-color: var(--dim); }
+.worker-light-unknown { color: var(--dim); }
+.worker-light-unknown .worker-light-dot { background: var(--dim); opacity: 0.5; }
+
+@media (max-width: 720px) {
+  .status-readiness { margin-left: 0; }
+}
+
 /* ─── pill ─────────────────────────────────────────────────────────────── */
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
@@ -292,10 +625,11 @@ kbd {
 .filter-row { display: flex; align-items: center; gap: 6px; }
 .chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .chips-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
   margin-right: 4px;
 }
@@ -326,10 +660,68 @@ kbd {
 .runs-list {
   flex: 1;
   overflow-y: auto;
+  margin: 0;
+  padding: 0;
+}
+.run-group { display: flex; flex-direction: column; }
+.run-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-1);
+  z-index: 1;
+  border-bottom: 1px solid var(--line);
+}
+.run-group-label {
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--fg-2);
+}
+.run-group-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 18px;
+  text-align: center;
+}
+.run-group-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
+.run-group-active .run-group-label    { color: var(--info); }
+.run-group-needs-you .run-group-label { color: var(--warn); }
+.run-group-recent .run-group-label    { color: var(--fg-3); }
+.run-group-active .run-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in oklab, var(--info) 50%, transparent);
+}
+.run-group-active .run-row.is-active::before { background: var(--info); }
+.run-group-needs-you .run-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in oklab, var(--warn) 50%, transparent);
+}
+.run-group-needs-you .run-row.is-active::before { background: var(--warn); }
 .run-row {
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
@@ -435,10 +827,11 @@ kbd {
 }
 .kv:last-child { border-right: 0; }
 .kv-k {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
 }
 .kv-v { font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -478,11 +871,12 @@ kbd {
   border-bottom: 1px solid var(--line);
 }
 .panel-title {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--fg-2);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
 }
 .panel-sub { font-family: var(--mono); font-size: 10px; color: var(--fg-3); }
 
@@ -583,10 +977,11 @@ kbd {
   gap: 5px;
 }
 .insp-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
 }
 .insp-type {
