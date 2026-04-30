@@ -1,9 +1,10 @@
 import { attentionCounts } from "../lib/adapt.js";
 
-export function StatusStrip({ runs, workerHealth, onFocusBucket }) {
+export function StatusStrip({ runs, providerRegistry, onFocusBucket }) {
   const counts = attentionCounts(runs);
-  const codex = workerHealth?.codex;
-  const claude = workerHealth?.claude;
+  const workerProviders =
+    providerRegistry?.providers?.filter((provider) => provider.kind === "subscription-worker") ??
+    fallbackWorkerProviders();
 
   return (
     <div className="status-strip" role="status" aria-label="Operator status">
@@ -34,42 +35,41 @@ export function StatusStrip({ runs, workerHealth, onFocusBucket }) {
 
       <span className="status-readiness" data-testid="status-readiness">
         <span className="status-readiness-label">Workers</span>
-        <WorkerLight name="Codex" available={codex?.available} detail={codex?.detail} />
-        <WorkerLight
-          name="Claude"
-          available={claude?.available}
-          authenticated={claude?.authenticated}
-          detail={
-            claude?.available
-              ? claude?.authenticated
-                ? claude?.authDetail ?? "signed in"
-                : claude?.authDetail ?? "not signed in"
-              : claude?.detail
-          }
-        />
+        {workerProviders.map((provider) => (
+          <ProviderLight key={provider.id} provider={provider} />
+        ))}
       </span>
     </div>
   );
 }
 
-function WorkerLight({ name, available, authenticated, detail }) {
-  let state;
-  if (available === undefined) state = "unknown";
-  else if (!available) state = "off";
-  else if (authenticated === false) state = "warn";
-  else state = "on";
-
-  const titleParts = [name];
-  if (detail) titleParts.push(detail);
+function ProviderLight({ provider }) {
+  const state = readinessLight(provider.readiness?.state);
+  const label = provider.label ?? provider.id;
+  const titleParts = [label, provider.readiness?.detail ?? provider.readiness?.state];
 
   return (
     <span
       className={`worker-light worker-light-${state}`}
-      title={titleParts.join(" · ")}
-      data-testid={`worker-light-${name.toLowerCase()}`}
+      title={titleParts.filter(Boolean).join(" · ")}
+      data-testid={`worker-light-${label.toLowerCase()}`}
     >
       <span className="worker-light-dot" aria-hidden />
-      <span className="worker-light-name">{name}</span>
+      <span className="worker-light-name">{label}</span>
     </span>
   );
+}
+
+function readinessLight(state) {
+  if (state === "ready" || state === "configured") return "on";
+  if (state === "auth-required" || state === "needs-config") return "warn";
+  if (state === "unavailable") return "off";
+  return "unknown";
+}
+
+function fallbackWorkerProviders() {
+  return [
+    { id: "codex-worker", label: "Codex", readiness: { state: "unknown" } },
+    { id: "claude-worker", label: "Claude", readiness: { state: "unknown" } },
+  ];
 }

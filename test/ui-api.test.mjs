@@ -7,6 +7,7 @@ import {
   createRun,
   denyApproval,
   fetchApprovals,
+  fetchProviderRegistry,
 } from "../web/src/lib/api.js";
 
 test("createRun posts a new task and returns created run metadata", async () => {
@@ -97,6 +98,32 @@ test("fetchApprovals returns an empty array when the body has no approvals key",
     fetchImpl: async () => response({ status: 200, body: {} }),
   });
   assert.deepEqual(approvals, []);
+});
+
+test("fetchProviderRegistry returns the provider registry from /api/providers", async () => {
+  const requests = [];
+  const registry = await fetchProviderRegistry({
+    fetchImpl: async (url) => {
+      requests.push(url);
+      return response({
+        status: 200,
+        body: {
+          defaultProvider: "codex-worker",
+          providers: [
+            {
+              id: "codex-worker",
+              label: "Codex",
+              readiness: { state: "ready", detail: "codex-cli" },
+            },
+          ],
+        },
+      });
+    },
+  });
+
+  assert.equal(requests[0], "/api/providers");
+  assert.equal(registry.defaultProvider, "codex-worker");
+  assert.equal(registry.providers[0].id, "codex-worker");
 });
 
 test("approveApproval POSTs to the approve route with a JSON reason", async () => {

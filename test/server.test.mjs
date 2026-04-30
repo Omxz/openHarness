@@ -78,6 +78,39 @@ test("API server reports worker readiness at GET /api/health/workers", async () 
   }
 });
 
+test("API server exposes the provider registry at GET /api/providers", async () => {
+  const logPath = await createLog([]);
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    workerHealth: async () => ({
+      codex: { available: true, command: "codex", detail: "codex ready" },
+      claude: {
+        available: true,
+        authenticated: true,
+        command: "claude",
+        detail: "claude ready",
+        authDetail: "logged in via claude.ai",
+      },
+    }),
+  });
+
+  try {
+    const body = await getJson(`${api.url}/api/providers`);
+
+    assert.equal(body.defaultProvider, "scripted");
+    assert.ok(body.providers.some((provider) => provider.id === "scripted"));
+    assert.ok(body.providers.some((provider) => provider.id === "codex-worker"));
+    assert.equal(
+      body.providers.find((provider) => provider.id === "claude-worker").readiness.state,
+      "ready",
+    );
+  } finally {
+    await api.close();
+  }
+});
+
 test("API server starts a scripted run from POST /api/runs", async () => {
   const logPath = await createLog([]);
   const workspace = await mkdtemp(join(tmpdir(), "openharness-api-workspace-"));

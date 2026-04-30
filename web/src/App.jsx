@@ -8,9 +8,9 @@ import { SlideOver } from "./components/SlideOver.jsx";
 import { StatusBar } from "./components/StatusBar.jsx";
 import { StatusStrip } from "./components/StatusStrip.jsx";
 import { TaskComposer } from "./components/TaskComposer.jsx";
+import { useProviderRegistry } from "./hooks/useProviderRegistry.js";
 import { useRuns } from "./hooks/useRuns.js";
 import { useTheme } from "./hooks/useTheme.js";
-import { useWorkerHealth } from "./hooks/useWorkerHealth.js";
 import { fetchHealth } from "./lib/api.js";
 import { adaptRun, adaptRuns } from "./lib/adapt.js";
 
@@ -24,7 +24,7 @@ export function App() {
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const { theme, toggle: onToggleTheme } = useTheme();
-  const { health: workerHealth } = useWorkerHealth();
+  const { registry: providerRegistry } = useProviderRegistry();
 
   const openLauncher = () => {
     setLauncherOpen(true);
@@ -86,7 +86,7 @@ export function App() {
       />
       <StatusStrip
         runs={runs}
-        workerHealth={workerHealth}
+        providerRegistry={providerRegistry}
         onFocusBucket={(bucket) => {
           setFilters((f) => ({
             ...f,
@@ -120,7 +120,7 @@ export function App() {
       >
         <TaskComposer
           focusKey={composerFocusKey}
-          workerHealth={workerHealth}
+          providerRegistry={providerRegistry}
           onCreated={(run) => {
             if (run?.runId) {
               setSelectedId(run.runId);

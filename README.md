@@ -182,6 +182,8 @@ exposes JSON endpoints:
 
 ```text
 GET /api/health
+GET /api/providers
+GET /api/health/workers
 GET /api/runs
 GET /api/runs/<run-id>
 POST /api/runs
@@ -203,8 +205,9 @@ same-origin client:
 }
 ```
 
-The initial API-started provider set is `scripted`, `ollama`, and
-`openai-compatible`. When an API-started run requests a write-risk tool,
+The API-started provider set is `scripted`, `ollama`, `openai-compatible`,
+`codex-worker`, and `claude-worker`. When an API-started model-provider run
+requests a write-risk tool,
 execution pauses until the dashboard or another same-origin local client posts
 an approve or deny decision.
 
@@ -213,8 +216,7 @@ an approve or deny decision.
 provider fetch (the OpenAI-compatible and Ollama providers receive the
 `AbortSignal`), unblocks any pending approval without executing the tool, and
 appends a `task.cancelled` audit event so the run summarizes as `cancelled`
-instead of `blocked`. Worker-backed runs and dashboard-started worker
-provisioning are still deliberate follow-up slices.
+instead of `blocked`.
 
 `/api/events/stream` is a Server-Sent Events stream. It emits
 `openharness.ready` on connect and `openharness.event` for each appended JSONL
@@ -258,12 +260,13 @@ record path, byte count, and hash metadata, but not full file content.
 ## Current Pieces
 
 - `src/kernel.mjs`: task orchestration loop.
-- `src/providers.mjs`: provider contract plus scripted test provider.
+- `src/providers.mjs`: provider contract plus scripted, OpenAI-compatible, and Ollama providers.
+- `src/provider-registry.mjs`: UI-safe provider registry and readiness read model.
 - `src/tools.mjs`: read, list, approval-gated shell, and safe write tools.
 - `src/policy.mjs`: workspace and tool-risk policy checks.
 - `src/audit-log.mjs`: JSONL event logging.
 - `src/runs.mjs`: JSONL-backed run summaries for UI clients.
-- `src/server.mjs`: read-only local JSON API for UI clients.
+- `src/server.mjs`: local JSON API and dashboard server.
 - `src/verifier.mjs`: command-based verification.
 - `src/workers.mjs`: subscription-backed CLI workers for Codex and Claude.
 

@@ -4,6 +4,7 @@ import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { normalizeConfig } from "./config.mjs";
+import { buildProviderRegistry } from "./provider-registry.mjs";
 import { createRunManager } from "./run-manager.mjs";
 import { getRun, listRuns } from "./runs.mjs";
 import {
@@ -203,9 +204,16 @@ async function handleRequest({
         createRuns: true,
         cancelRuns: true,
         approvalDecisions: true,
+        providerRegistry: true,
       },
       logPath,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/providers") {
+    const registry = await buildProviderRegistry({ config, workerHealth });
+    sendJson(response, 200, registry);
     return;
   }
 

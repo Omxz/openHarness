@@ -12,6 +12,12 @@ export async function fetchWorkerHealth({ fetchImpl = fetch } = {}) {
   return r.json();
 }
 
+export async function fetchProviderRegistry({ fetchImpl = fetch } = {}) {
+  const r = await fetchImpl(`${BASE}/providers`);
+  if (!r.ok) throw new Error(`/api/providers ${r.status}`);
+  return r.json();
+}
+
 export async function fetchRuns() {
   const r = await fetch(`${BASE}/runs`);
   if (!r.ok) throw new Error(`/api/runs ${r.status}`);
