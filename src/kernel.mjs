@@ -16,6 +16,7 @@ export async function runTask({
   approvals,
   approveToolUse = defaultApproveToolUse,
   signal,
+  retryOfRunId,
 }) {
   const task = {
     id: taskId,
@@ -31,7 +32,13 @@ export async function runTask({
     taskId: task.id,
     actor: "user",
     type: "task.created",
-    data: { goal, workspace, privacyMode, providerId: provider.id },
+    data: {
+      goal,
+      workspace,
+      privacyMode,
+      providerId: provider.id,
+      ...(retryOfRunId ? { retryOfRunId } : {}),
+    },
   });
 
   if (signal?.aborted) {
@@ -231,6 +238,7 @@ export async function runWorkerTask({
   worker,
   verifier,
   signal,
+  retryOfRunId,
 }) {
   const task = {
     id: taskId,
@@ -244,7 +252,13 @@ export async function runWorkerTask({
     taskId: task.id,
     actor: "user",
     type: "task.created",
-    data: { goal, workspace, privacyMode, workerId: worker.id },
+    data: {
+      goal,
+      workspace,
+      privacyMode,
+      workerId: worker.id,
+      ...(retryOfRunId ? { retryOfRunId } : {}),
+    },
   });
 
   if (signal?.aborted) {

@@ -291,6 +291,24 @@ test("buildRuns derives worker supervision from failed worker results", () => {
   );
 });
 
+test("buildRuns surfaces privacy mode and retry lineage from task.created", () => {
+  const runs = buildRuns([
+    event("retry-run", "2026-04-28T16:00:00.000Z", "user", "task.created", {
+      goal: "retry",
+      providerId: "cli:scripted",
+      privacyMode: "local-only",
+      retryOfRunId: "origin-run",
+    }),
+    event("retry-run", "2026-04-28T16:00:01.000Z", "system", "task.done", {
+      status: "done",
+    }),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.privacyMode, "local-only");
+  assert.equal(run.retryOfRunId, "origin-run");
+});
+
 test("buildRuns caps partial worker output to a bounded number of bytes", () => {
   const big = "x".repeat(8 * 1024);
   const events = [

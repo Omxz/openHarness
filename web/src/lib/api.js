@@ -67,6 +67,27 @@ export async function cancelRun(id, options = {}, { fetchImpl = fetch } = {}) {
   return body.run ?? null;
 }
 
+export async function retryRun(id, options = {}, { fetchImpl = fetch } = {}) {
+  const body = {};
+  if (typeof options?.provider === "string" && options.provider.trim()) {
+    body.provider = options.provider.trim();
+  }
+  if (typeof options?.privacyMode === "string" && options.privacyMode.trim()) {
+    body.privacyMode = options.privacyMode.trim();
+  }
+
+  const r = await fetchImpl(`${BASE}/runs/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await r.json();
+  if (!r.ok) {
+    throw new Error(responseBody.error?.message ?? `/api/runs/${id}/retry ${r.status}`);
+  }
+  return responseBody.run ?? null;
+}
+
 export async function fetchApprovals({ fetchImpl = fetch } = {}) {
   const r = await fetchImpl(`${BASE}/approvals`);
   if (!r.ok) throw new Error(`/api/approvals ${r.status}`);

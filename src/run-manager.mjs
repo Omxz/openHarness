@@ -59,6 +59,7 @@ export function createRunManager({
         status: "running",
         goal: request.goal,
         providerId: dispatch.id,
+        retryOfRunId: request.retryOfRunId,
       });
 
       const wrappedApprove = async (context) => {
@@ -81,6 +82,7 @@ export function createRunManager({
           verifier,
           approveToolUse: wrappedApprove,
           signal: controller.signal,
+          retryOfRunId: request.retryOfRunId,
         })
         .then(async (result) => {
           // Workers may complete with status "cancelled" (the kernel handles
@@ -95,6 +97,7 @@ export function createRunManager({
               goal: request.goal,
               providerId: result.providerId ?? result.workerId ?? dispatch.id,
               reason,
+              retryOfRunId: request.retryOfRunId,
             });
             await appendEvent(
               logPath,
@@ -114,6 +117,7 @@ export function createRunManager({
             status: result.status,
             goal: request.goal,
             providerId: result.providerId ?? result.workerId ?? dispatch.id,
+            retryOfRunId: request.retryOfRunId,
           });
           cleanup(runId);
           return result;
@@ -126,6 +130,7 @@ export function createRunManager({
               goal: request.goal,
               providerId: dispatch.id,
               reason: cancellations.get(runId) ?? "cancelled",
+              retryOfRunId: request.retryOfRunId,
             });
             await appendEvent(
               logPath,
@@ -148,6 +153,7 @@ export function createRunManager({
             goal: request.goal,
             providerId: dispatch.id,
             error: error.message,
+            retryOfRunId: request.retryOfRunId,
           });
           await appendEvent(
             logPath,
@@ -168,6 +174,7 @@ export function createRunManager({
         runId,
         status: "running",
         providerId: dispatch.id,
+        retryOfRunId: request.retryOfRunId,
         promise,
       };
     },
@@ -206,6 +213,7 @@ export function createRunManager({
           goal: active.goal,
           providerId: active.providerId,
           reason,
+          retryOfRunId: active.retryOfRunId,
         },
       };
     },
@@ -233,6 +241,10 @@ function normalizeRunRequest(input, config) {
       typeof input.privacyMode === "string" && input.privacyMode.trim()
         ? input.privacyMode.trim()
         : config.privacyMode,
+    retryOfRunId:
+      typeof input.retryOfRunId === "string" && input.retryOfRunId.trim()
+        ? input.retryOfRunId.trim()
+        : null,
   };
 }
 
@@ -244,7 +256,18 @@ function buildProviderDispatch({ providerName, config, goal }) {
   const provider = createProvider(providerName, config, goal);
   return {
     id: provider.id,
-    run({ taskId, goal: g, workspace, logPath, privacyMode, tools, verifier, approveToolUse, signal }) {
+    run({
+      taskId,
+      goal: g,
+      workspace,
+      logPath,
+      privacyMode,
+      tools,
+      verifier,
+      approveToolUse,
+      signal,
+      retryOfRunId,
+    }) {
       return runTask({
         taskId,
         goal: g,
@@ -256,6 +279,7 @@ function buildProviderDispatch({ providerName, config, goal }) {
         verifier,
         approveToolUse,
         signal,
+        retryOfRunId,
       });
     },
   };
@@ -265,7 +289,16 @@ function buildWorkerDispatch({ providerName, config, workerFactory }) {
   const worker = workerFactory(providerName, config);
   return {
     id: worker.id,
-    run({ taskId, goal, workspace, logPath, privacyMode, verifier, signal }) {
+    run({
+      taskId,
+      goal,
+      workspace,
+      logPath,
+      privacyMode,
+      verifier,
+      signal,
+      retryOfRunId,
+    }) {
       return runWorkerTask({
         taskId,
         goal,
@@ -275,6 +308,7 @@ function buildWorkerDispatch({ providerName, config, workerFactory }) {
         worker,
         verifier,
         signal,
+        retryOfRunId,
       });
     },
   };

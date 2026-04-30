@@ -8,6 +8,7 @@ import {
   denyApproval,
   fetchApprovals,
   fetchProviderRegistry,
+  retryRun,
 } from "../web/src/lib/api.js";
 
 test("createRun posts a new task and returns created run metadata", async () => {
@@ -263,6 +264,40 @@ test("cancelRun surfaces API error messages", async () => {
       ),
     /Run not found: missing/,
   );
+});
+
+test("retryRun POSTs to the retry route and returns the created run", async () => {
+  const requests = [];
+  const result = await retryRun(
+    "run 7",
+    { provider: "claude-worker", privacyMode: "ask-before-api" },
+    {
+      fetchImpl: async (url, init) => {
+        requests.push({ url, init });
+        return response({
+          status: 202,
+          body: {
+            run: {
+              runId: "retry-1",
+              status: "running",
+              providerId: "claude-worker",
+              retryOfRunId: "run 7",
+            },
+          },
+        });
+      },
+    },
+  );
+
+  assert.equal(requests[0].url, "/api/runs/run%207/retry");
+  assert.equal(requests[0].init.method, "POST");
+  assert.equal(requests[0].init.headers["content-type"], "application/json");
+  assert.deepEqual(JSON.parse(requests[0].init.body), {
+    provider: "claude-worker",
+    privacyMode: "ask-before-api",
+  });
+  assert.equal(result.runId, "retry-1");
+  assert.equal(result.retryOfRunId, "run 7");
 });
 
 function response({ status, body }) {

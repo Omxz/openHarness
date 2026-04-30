@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { normalizeConfig } from "./config.mjs";
 import { buildProviderRegistry } from "./provider-registry.mjs";
+import { buildRetryPlan } from "./router.mjs";
 import { createRunManager } from "./run-manager.mjs";
 import { getRun, listRuns } from "./runs.mjs";
 import {
@@ -123,6 +124,33 @@ async function handleRequest({
     request.method === "POST"
       ? url.pathname.match(/^\/api\/runs\/([^/]+)\/cancel$/)
       : null;
+  const retryMatch =
+    request.method === "POST"
+      ? url.pathname.match(/^\/api\/runs\/([^/]+)\/retry$/)
+      : null;
+  if (retryMatch) {
+    if (!isAllowedRequestOrigin(request)) {
+      sendJson(response, 403, {
+        error: {
+          code: "forbidden_origin",
+          message: "Cross-origin run retries are not allowed",
+        },
+      });
+      return;
+    }
+
+    await retryRunRoute({
+      request,
+      response,
+      logPath,
+      runManager,
+      workerHealth,
+      config,
+      runId: decodeURIComponent(retryMatch[1]),
+    });
+    return;
+  }
+
   if (cancelMatch) {
     if (!isAllowedRequestOrigin(request)) {
       sendJson(response, 403, {
@@ -173,7 +201,7 @@ async function handleRequest({
       error: {
         code: "method_not_allowed",
         message:
-          "Only GET, POST /api/runs, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
+          "Only GET, POST /api/runs, POST /api/runs/:id/retry, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
     });
     return;
@@ -202,6 +230,7 @@ async function handleRequest({
       readOnly: false,
       capabilities: {
         createRuns: true,
+        retryRuns: true,
         cancelRuns: true,
         approvalDecisions: true,
         providerRegistry: true,
@@ -254,7 +283,9 @@ async function handleRequest({
       return;
     }
 
-    sendJson(response, 200, { run });
+    sendJson(response, 200, {
+      run: await withRetryPlan({ run, config, workerHealth }),
+    });
     return;
   }
 
@@ -351,6 +382,92 @@ async function cancelRunRoute({ request, response, runManager, runId }) {
   sendJson(response, 200, { run: result.summary });
 }
 
+async function retryRunRoute({
+  request,
+  response,
+  logPath,
+  runManager,
+  workerHealth,
+  config,
+  runId,
+}) {
+  if (typeof runManager.startRun !== "function") {
+    sendJson(response, 503, {
+      error: {
+        code: "retry_unavailable",
+        message: "Run retries are not configured",
+      },
+    });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonBody(request);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: { code: "invalid_json", message: error.message },
+    });
+    return;
+  }
+
+  const original = await getRun(logPath, runId);
+  if (!original) {
+    sendJson(response, 404, {
+      error: {
+        code: "not_found",
+        message: `Run not found: ${runId}`,
+      },
+    });
+    return;
+  }
+
+  const providerRegistry = await buildProviderRegistry({ config, workerHealth });
+  const retryPlan = buildRetryPlan({
+    run: original,
+    providerRegistry,
+    requestedProvider:
+      typeof body?.provider === "string" && body.provider.trim()
+        ? body.provider.trim()
+        : undefined,
+    privacyMode:
+      typeof body?.privacyMode === "string" && body.privacyMode.trim()
+        ? body.privacyMode.trim()
+        : undefined,
+  });
+
+  if (!retryPlan.available) {
+    sendJson(response, 409, {
+      error: {
+        code: retryPlan.code ?? "retry_unavailable",
+        message: retryPlan.reason,
+      },
+      retryPlan,
+    });
+    return;
+  }
+
+  const run = runManager.startRun({
+    goal: original.goal,
+    provider: retryPlan.providerId,
+    privacyMode: retryPlan.privacyMode,
+    retryOfRunId: original.runId,
+  });
+
+  response.writeHead(202, {
+    "content-type": "application/json; charset=utf-8",
+    location: `/api/runs/${encodeURIComponent(run.runId)}`,
+  });
+  response.end(`${JSON.stringify(
+    {
+      run: toRunCreatedResponse(run),
+      retryPlan,
+    },
+    null,
+    2,
+  )}\n`);
+}
+
 async function decideApproval({ request, response, runManager, approvalId, action }) {
   const manager = runManager.approvalManager;
   if (!manager) {
@@ -396,10 +513,26 @@ async function decideApproval({ request, response, runManager, approvalId, actio
 }
 
 function toRunCreatedResponse(run) {
-  return {
+  const response = {
     runId: run.runId,
     status: run.status,
     providerId: run.providerId,
+  };
+  if (run.retryOfRunId) {
+    response.retryOfRunId = run.retryOfRunId;
+  }
+  return response;
+}
+
+async function withRetryPlan({ run, config, workerHealth }) {
+  if (run.status !== "blocked" && run.status !== "failed") {
+    return run;
+  }
+
+  const providerRegistry = await buildProviderRegistry({ config, workerHealth });
+  return {
+    ...run,
+    retryPlan: buildRetryPlan({ run, providerRegistry }),
   };
 }
 

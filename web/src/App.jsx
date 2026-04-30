@@ -109,6 +109,12 @@ export function App() {
             if (!inspectorOpen) setInspectorOpen(true);
           }}
           pickedEvent={pickedEvent}
+          onRetryCreated={(run) => {
+            if (run?.runId) {
+              setSelectedId(run.runId);
+            }
+            setTailing(true);
+          }}
         />
         {inspectorOpen && <Inspector run={selected} event={pickedEvent} />}
       </main>

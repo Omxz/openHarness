@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { pendingApprovalIndicator } from "../lib/adapt.js";
-import { approveApproval, cancelRun, denyApproval } from "../lib/api.js";
+import { approveApproval, cancelRun, denyApproval, retryRun } from "../lib/api.js";
 import { buildActivityCards } from "../lib/activity.js";
 import { fmtDur, fmtTimeMs } from "../lib/format.js";
 import { StatusPill } from "./StatusPill.jsx";
@@ -15,7 +15,7 @@ const STATUS_COLOR = {
   cancelled: "var(--warn)",
 };
 
-export function RunDetail({ run, onPickEvent, pickedEvent }) {
+export function RunDetail({ run, onPickEvent, pickedEvent, onRetryCreated }) {
   if (!run) return <section className="detail empty-detail">Select a run.</section>;
 
   const pending = pendingApprovalIndicator(run);
@@ -35,6 +35,9 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
         <div className="detail-head-top">
           <StatusPill status={run.status} size="md" />
           <code className="run-id">{run.id}</code>
+          {run.retryOfRunId && (
+            <span className="dim">retry of {run.retryOfRunId.slice(0, 8)}</span>
+          )}
           {pending && (
             <span
               className="pill pill-md"
@@ -66,7 +69,12 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
       </div>
 
       {run.supervision && (
-        <WorkerSupervisionPanel supervision={run.supervision} />
+        <WorkerSupervisionPanel
+          runId={run.id}
+          supervision={run.supervision}
+          retryPlan={run.retryPlan}
+          onRetryCreated={onRetryCreated}
+        />
       )}
 
       {activityCards.length > 0 && (
@@ -172,7 +180,28 @@ function OperatorActivityPanel({ cards, running }) {
   );
 }
 
-function WorkerSupervisionPanel({ supervision }) {
+function WorkerSupervisionPanel({ runId, supervision, retryPlan, onRetryCreated }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const canRetry = retryPlan?.available && retryPlan.providerId;
+
+  async function handleRetry() {
+    if (!canRetry || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const run = await retryRun(runId, {
+        provider: retryPlan.providerId,
+        privacyMode: retryPlan.privacyMode,
+      });
+      onRetryCreated?.(run);
+    } catch (err) {
+      setError(err.message ?? "Failed to retry run");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="panel supervision-panel" data-testid="worker-supervision-panel">
       <div className="panel-head">
@@ -191,6 +220,28 @@ function WorkerSupervisionPanel({ supervision }) {
         )}
         {supervision.exitCode != null && (
           <VerifyRow k="exit" v={<code>{String(supervision.exitCode)}</code>} />
+        )}
+      </div>
+      <div className="supervision-actions">
+        {canRetry ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            data-testid="retry-run-button"
+            disabled={submitting}
+            onClick={handleRetry}
+          >
+            {submitting
+              ? "Retrying…"
+              : `Retry with ${retryPlan.providerLabel ?? retryPlan.providerId}`}
+          </button>
+        ) : retryPlan ? (
+          <span className="dim">{retryPlan.reason}</span>
+        ) : null}
+        {error && (
+          <span className="approval-error" data-testid="retry-run-error">
+            {error}
+          </span>
         )}
       </div>
     </div>

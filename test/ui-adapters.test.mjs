@@ -240,6 +240,28 @@ test("UI run adapter exposes worker supervision from run summaries", () => {
   );
 });
 
+test("UI run adapter passes through retry metadata", () => {
+  const run = adaptRun({
+    runId: "retry-run",
+    status: "running",
+    goal: "retry",
+    eventCount: 1,
+    privacyMode: "ask-before-api",
+    retryOfRunId: "origin-run",
+    retryPlan: {
+      available: true,
+      providerId: "claude-worker",
+      providerLabel: "Claude",
+      privacyMode: "ask-before-api",
+    },
+    events: [],
+  });
+
+  assert.equal(run.privacyMode, "ask-before-api");
+  assert.equal(run.retryOfRunId, "origin-run");
+  assert.equal(run.retryPlan.providerId, "claude-worker");
+});
+
 test("UI event summarizer includes worker supervision category", () => {
   assert.equal(
     summarize({

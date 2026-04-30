@@ -113,6 +113,8 @@ function summarizeRun(runId, events) {
     goal: created?.data?.goal ?? null,
     providerId,
     workerId,
+    privacyMode: created?.data?.privacyMode ?? null,
+    retryOfRunId: created?.data?.retryOfRunId ?? null,
     status,
     createdAt,
     completedAt,

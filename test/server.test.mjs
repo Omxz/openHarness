@@ -265,6 +265,148 @@ test("API server exposes one run with its event timeline", async () => {
   }
 });
 
+test("API server includes a retry plan for blocked runs", async () => {
+  const logPath = await createLog([
+    event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {
+      goal: "retry me",
+      workerId: "codex-worker",
+      privacyMode: "ask-before-api",
+    }),
+    event("run-1", "2026-04-28T10:00:01.000Z", "worker", "worker.finished", {
+      workerId: "codex-worker",
+      result: { exitCode: 1, output: "Usage limit reached." },
+    }),
+    event("run-1", "2026-04-28T10:00:02.000Z", "system", "task.done", {
+      status: "blocked",
+    }),
+  ]);
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    workerHealth: async () => ({
+      codex: { available: true, detail: "codex ready" },
+      claude: { available: true, authenticated: true, authDetail: "claude ready" },
+    }),
+  });
+
+  try {
+    const body = await getJson(`${api.url}/api/runs/run-1`);
+
+    assert.equal(body.run.retryPlan.available, true);
+    assert.equal(body.run.retryPlan.providerId, "claude-worker");
+    assert.equal(body.run.retryPlan.retryOfRunId, "run-1");
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server retries a blocked run with the routed provider", async () => {
+  const logPath = await createLog([
+    event("run-1", "2026-04-28T10:00:00.000Z", "user", "task.created", {
+      goal: "retry me",
+      workerId: "codex-worker",
+      privacyMode: "ask-before-api",
+    }),
+    event("run-1", "2026-04-28T10:00:01.000Z", "worker", "worker.finished", {
+      workerId: "codex-worker",
+      result: { exitCode: 1, output: "Usage limit reached." },
+    }),
+    event("run-1", "2026-04-28T10:00:02.000Z", "system", "task.done", {
+      status: "blocked",
+    }),
+  ]);
+  const calls = [];
+  const runManager = {
+    approvalManager: { list: () => [] },
+    startRun(input) {
+      calls.push(input);
+      return {
+        runId: "retry-1",
+        status: "running",
+        providerId: input.provider,
+        retryOfRunId: input.retryOfRunId,
+      };
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+  const api = await startApiServer({
+    host: "127.0.0.1",
+    port: 0,
+    logPath,
+    runManager,
+    workerHealth: async () => ({
+      codex: { available: true, detail: "codex ready" },
+      claude: { available: true, authenticated: true, authDetail: "claude ready" },
+    }),
+  });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs/run-1/retry`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: api.url,
+      },
+      body: "{}",
+    });
+
+    assert.equal(response.status, 202);
+    assert.equal(response.headers.get("location"), "/api/runs/retry-1");
+    const body = await response.json();
+    assert.equal(body.run.runId, "retry-1");
+    assert.equal(body.run.retryOfRunId, "run-1");
+    assert.deepEqual(calls[0], {
+      goal: "retry me",
+      provider: "claude-worker",
+      privacyMode: "ask-before-api",
+      retryOfRunId: "run-1",
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test("API server rejects cross-origin run retries", async () => {
+  const logPath = await createLog([]);
+  const calls = [];
+  const runManager = {
+    approvalManager: { list: () => [] },
+    startRun(input) {
+      calls.push(input);
+      return { runId: "retry-1", status: "running", providerId: input.provider };
+    },
+    getActiveRuns() {
+      return [];
+    },
+  };
+  const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath, runManager });
+
+  try {
+    const response = await fetch(`${api.url}/api/runs/run-1/retry`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "http://evil.example",
+      },
+      body: "{}",
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), {
+      error: {
+        code: "forbidden_origin",
+        message: "Cross-origin run retries are not allowed",
+      },
+    });
+    assert.equal(calls.length, 0);
+  } finally {
+    await api.close();
+  }
+});
+
 test("API server returns stable JSON errors and rejects unsupported methods", async () => {
   const logPath = await createLog([]);
   const api = await startApiServer({ host: "127.0.0.1", port: 0, logPath });
@@ -287,7 +429,7 @@ test("API server returns stable JSON errors and rejects unsupported methods", as
       error: {
         code: "method_not_allowed",
         message:
-          "Only GET, POST /api/runs, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
+          "Only GET, POST /api/runs, POST /api/runs/:id/retry, POST /api/runs/:id/cancel, POST /api/approvals/:id/approve, POST /api/approvals/:id/deny, and OPTIONS are supported",
       },
     });
   } finally {

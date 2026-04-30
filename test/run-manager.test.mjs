@@ -192,6 +192,32 @@ test("createRunManager dispatches worker runs and reports the workerId as provid
   assert.ok(types.includes("task.done"));
 });
 
+test("createRunManager records retry lineage on task.created", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "openharness-rm-retry-"));
+  const logPath = join(workspace, "events.jsonl");
+  const manager = createRunManager({
+    workspace,
+    logPath,
+    config: normalizeConfig({}),
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  const run = manager.startRun({
+    goal: "retry the original task",
+    provider: "scripted",
+    privacyMode: "local-only",
+    retryOfRunId: "origin-run",
+  });
+
+  assert.equal(run.retryOfRunId, "origin-run");
+  const result = await run.promise;
+  assert.equal(result.status, "done");
+
+  const events = await readEvents(logPath);
+  const created = events.find((event) => event.type === "task.created");
+  assert.equal(created.data.retryOfRunId, "origin-run");
+});
+
 test("createRunManager.cancelRun aborts a running worker subprocess and emits worker.cancelled", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "openharness-rm-worker-cancel-"));
   const logPath = join(workspace, "events.jsonl");

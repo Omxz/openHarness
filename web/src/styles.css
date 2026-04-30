@@ -975,6 +975,16 @@ kbd {
 .supervision-panel .panel-title {
   color: var(--warn);
 }
+.supervision-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px 12px;
+  flex-wrap: wrap;
+}
+.supervision-actions .approval-error {
+  padding: 0;
+}
 .approval-actions {
   display: flex;
   gap: 8px;
