@@ -203,6 +203,57 @@ test("UI run adapter derives blocked reason from approval decisions", () => {
   assert.equal(run.reason, "awaiting approval for shell (write risk)");
 });
 
+test("UI run adapter exposes worker supervision from run summaries", () => {
+  const run = adaptRun({
+    runId: "run-limit",
+    status: "blocked",
+    goal: "delegate",
+    eventCount: 2,
+    reason: "codex-worker hit a usage limit",
+    supervision: {
+      state: "blocked",
+      category: "usage-limit",
+      reason: "codex-worker hit a usage limit",
+      suggestedAction: "Wait for the reset window or reroute to another ready provider.",
+      exitCode: 1,
+    },
+    events: [
+      {
+        type: "worker.finished",
+        data: {
+          workerId: "codex-worker",
+          result: { exitCode: 1, output: "Usage limit reached." },
+        },
+      },
+      {
+        type: "task.done",
+        data: { status: "blocked" },
+      },
+    ],
+  });
+
+  assert.equal(run.reason, "codex-worker hit a usage limit");
+  assert.equal(run.supervision.category, "usage-limit");
+  assert.equal(
+    run.supervision.suggestedAction,
+    "Wait for the reset window or reroute to another ready provider.",
+  );
+});
+
+test("UI event summarizer includes worker supervision category", () => {
+  assert.equal(
+    summarize({
+      type: "worker.finished",
+      data: {
+        workerId: "codex-worker",
+        result: { exitCode: 1 },
+        supervision: { category: "usage-limit" },
+      },
+    }),
+    "codex-worker · usage-limit · exit 1",
+  );
+});
+
 test("UI event summarizer renders worker.output stdout chunks", () => {
   assert.equal(
     summarize({

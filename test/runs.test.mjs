@@ -261,6 +261,36 @@ test("buildRuns surfaces partialStdout for runs that have not yet emitted worker
   assert.equal(run.partialStderr, "");
 });
 
+test("buildRuns derives worker supervision from failed worker results", () => {
+  const runs = buildRuns([
+    event("run-limit", "2026-04-28T15:00:00.000Z", "user", "task.created", {
+      goal: "delegate",
+      workerId: "codex-worker",
+    }),
+    event("run-limit", "2026-04-28T15:00:01.000Z", "worker", "worker.finished", {
+      workerId: "codex-worker",
+      result: {
+        exitCode: 1,
+        stdout: "Usage limit reached. Try again later.",
+        stderr: "",
+        output: "Usage limit reached. Try again later.",
+      },
+    }),
+    event("run-limit", "2026-04-28T15:00:02.000Z", "system", "task.done", {
+      status: "blocked",
+    }),
+  ]);
+
+  const run = runs[0];
+  assert.equal(run.status, "blocked");
+  assert.equal(run.reason, "codex-worker hit a usage limit");
+  assert.equal(run.supervision.category, "usage-limit");
+  assert.equal(
+    run.supervision.suggestedAction,
+    "Wait for the reset window or reroute to another ready provider.",
+  );
+});
+
 test("buildRuns caps partial worker output to a bounded number of bytes", () => {
   const big = "x".repeat(8 * 1024);
   const events = [

@@ -969,6 +969,12 @@ kbd {
 .approval-panel .panel-title {
   color: var(--warn);
 }
+.supervision-panel {
+  border-color: color-mix(in oklab, var(--warn) 70%, var(--line));
+}
+.supervision-panel .panel-title {
+  color: var(--warn);
+}
 .approval-actions {
   display: flex;
   gap: 8px;

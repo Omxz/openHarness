@@ -20,7 +20,8 @@ export function adaptRun(r) {
     eventCount: r.eventCount,
     durationMs: r.durationMs,
     exitCode: r.verification?.exitCode ?? null,
-    reason: deriveReason(events, r.status),
+    reason: r.reason ?? deriveReason(events, r.status),
+    supervision: r.supervision ?? deriveSupervision(events),
     final: r.final,
     verification: r.verification ?? null,
     pendingApproval: pending.pending,
@@ -229,8 +230,37 @@ function deriveReason(events, status) {
   }
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const ev = events[i];
+    if (
+      ev?.type === "task.done" &&
+      ev.data?.status === "blocked" &&
+      ev.data?.reason
+    ) {
+      return ev.data.reason;
+    }
+  }
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
+    if (ev?.type === "worker.finished" && ev.data?.supervision?.reason) {
+      return ev.data.supervision.reason;
+    }
+  }
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
     if (ev?.type === "task.done" && ev.data?.status === "blocked") {
-      return ev.data?.reason ?? "task blocked";
+      return "task blocked";
+    }
+  }
+  return null;
+}
+
+function deriveSupervision(events) {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
+    if (ev?.type === "worker.finished" && ev.data?.supervision) {
+      return ev.data.supervision;
+    }
+    if (ev?.type === "task.done" && ev.data?.supervision) {
+      return ev.data.supervision;
     }
   }
   return null;

@@ -65,6 +65,10 @@ export function RunDetail({ run, onPickEvent, pickedEvent }) {
         )}
       </div>
 
+      {run.supervision && (
+        <WorkerSupervisionPanel supervision={run.supervision} />
+      )}
+
       {activityCards.length > 0 && (
         <OperatorActivityPanel cards={activityCards} running={run.status === "running"} />
       )}
@@ -163,6 +167,31 @@ function OperatorActivityPanel({ cards, running }) {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function WorkerSupervisionPanel({ supervision }) {
+  return (
+    <div className="panel supervision-panel" data-testid="worker-supervision-panel">
+      <div className="panel-head">
+        <span className="panel-title">Worker supervision</span>
+        <span className="panel-sub">
+          {supervision.category ?? "worker"} · {supervision.state ?? "blocked"}
+        </span>
+      </div>
+      <div className="verify-body">
+        <VerifyRow
+          k="reason"
+          v={<span>{supervision.reason ?? "Worker needs attention"}</span>}
+        />
+        {supervision.suggestedAction && (
+          <VerifyRow k="next" v={<span>{supervision.suggestedAction}</span>} />
+        )}
+        {supervision.exitCode != null && (
+          <VerifyRow k="exit" v={<code>{String(supervision.exitCode)}</code>} />
+        )}
       </div>
     </div>
   );

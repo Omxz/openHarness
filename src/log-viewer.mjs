@@ -29,7 +29,10 @@ function formatDetails(event) {
   }
 
   if (event.type === "task.done") {
-    return data.status ? `status=${data.status}` : "";
+    return [
+      data.status ? `status=${data.status}` : "",
+      data.reason ? `reason="${data.reason}"` : "",
+    ].filter(Boolean).join(" ");
   }
 
   if (event.type === "tool.started" || event.type === "tool.finished") {
@@ -48,6 +51,7 @@ function formatDetails(event) {
     return [
       data.workerId ? `worker=${data.workerId}` : "",
       data.result?.exitCode !== undefined ? `exit=${data.result.exitCode}` : "",
+      data.supervision?.category ? `supervision=${data.supervision.category}` : "",
     ].filter(Boolean).join(" ");
   }
 

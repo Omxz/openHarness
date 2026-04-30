@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendEvent, createEvent } from "./audit-log.mjs";
 import { createPolicy } from "./policy.mjs";
 import { runVerifier } from "./verifier.mjs";
+import { classifyWorkerResult } from "./worker-supervision.mjs";
 
 export async function runTask({
   taskId = randomUUID(),
@@ -322,11 +323,19 @@ export async function runWorkerTask({
   }
 
   await chunkChain;
+  const supervision = classifyWorkerResult({
+    workerId: worker.id,
+    result: workerResult,
+  });
   await log(logPath, {
     taskId: task.id,
     actor: "worker",
     type: "worker.finished",
-    data: { workerId: worker.id, result: workerResult },
+    data: {
+      workerId: worker.id,
+      result: workerResult,
+      ...(supervision ? { supervision } : {}),
+    },
   });
 
   const verification = await runVerifier(verifier, { workspace });
@@ -339,11 +348,17 @@ export async function runWorkerTask({
 
   const status =
     workerResult.exitCode === 0 && verification.exitCode === 0 ? "done" : "blocked";
+  const taskDoneData = {
+    status,
+    ...(status === "blocked" && supervision
+      ? { reason: supervision.reason, supervision }
+      : {}),
+  };
   await log(logPath, {
     taskId: task.id,
     actor: "system",
     type: "task.done",
-    data: { status },
+    data: taskDoneData,
   });
 
   return {
@@ -352,6 +367,7 @@ export async function runWorkerTask({
     workerId: worker.id,
     final: workerResult.output,
     worker: workerResult,
+    supervision,
     verification,
   };
 }

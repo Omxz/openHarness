@@ -516,6 +516,47 @@ test("runWorkerTask streams worker chunks as worker.output audit events", async 
   );
 });
 
+test("runWorkerTask records worker supervision when a worker hits a usage limit", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "harness-worker-supervision-"));
+  const logPath = join(workspace, "events.jsonl");
+  const worker = {
+    id: "codex-worker",
+    async runTask() {
+      return {
+        workerId: "codex-worker",
+        command: "codex",
+        args: ["exec"],
+        exitCode: 1,
+        stdout: "Usage limit reached. Try again later.",
+        stderr: "",
+        output: "Usage limit reached. Try again later.",
+      };
+    },
+  };
+
+  const result = await runWorkerTask({
+    goal: "inspect",
+    workspace,
+    logPath,
+    privacyMode: "ask-before-api",
+    worker,
+    verifier: { command: "node", args: ["--version"] },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.supervision.category, "usage-limit");
+
+  const events = await readEvents(logPath);
+  const finished = events.find((event) => event.type === "worker.finished");
+  const done = events.find((event) => event.type === "task.done");
+  assert.equal(finished.data.supervision.category, "usage-limit");
+  assert.equal(done.data.reason, "codex-worker hit a usage limit");
+  assert.equal(
+    done.data.supervision.suggestedAction,
+    "Wait for the reset window or reroute to another ready provider.",
+  );
+});
+
 test("runWorkerTask truncates large worker output chunks before logging them", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "harness-worker-bound-"));
   const logPath = join(workspace, "events.jsonl");

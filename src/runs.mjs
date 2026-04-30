@@ -1,5 +1,6 @@
 import { readEvents } from "./audit-log.mjs";
 import { formatEvents } from "./log-viewer.mjs";
+import { classifyWorkerResult } from "./worker-supervision.mjs";
 
 export async function listRuns(logPath) {
   const events = await readRunEvents(logPath);
@@ -103,6 +104,9 @@ function summarizeRun(runId, events) {
     ? "cancelled"
     : completed?.data?.status ?? "running";
   const partial = derivePartialWorkerOutput(orderedEvents);
+  const supervision = deriveWorkerSupervision({ workerFinal, completed });
+  const reason =
+    completed?.data?.reason ?? supervision?.reason ?? cancelled?.data?.reason ?? null;
 
   return {
     runId,
@@ -119,6 +123,8 @@ function summarizeRun(runId, events) {
       workerFinal?.data?.result?.stdout ??
       null,
     verification: verification?.data?.result ?? null,
+    reason,
+    supervision,
     pendingApproval: pending.pending,
     pendingApprovalTool: pending.toolName,
     pendingApprovalId: pending.approvalId,
@@ -129,6 +135,23 @@ function summarizeRun(runId, events) {
     eventCount: orderedEvents.length,
     events: orderedEvents,
   };
+}
+
+function deriveWorkerSupervision({ workerFinal, completed }) {
+  if (workerFinal?.data?.supervision) {
+    return workerFinal.data.supervision;
+  }
+  if (completed?.data?.supervision) {
+    return completed.data.supervision;
+  }
+  if (!workerFinal?.data?.result) {
+    return null;
+  }
+  return classifyWorkerResult({
+    workerId:
+      workerFinal.data?.workerId ?? workerFinal.data.result?.workerId ?? "worker",
+    result: workerFinal.data.result,
+  });
 }
 
 // Per-stream aggregation cap. Unbounded growth is risky for long-running

@@ -66,8 +66,10 @@ export function summarize(ev) {
       return `exit ${d.result?.exitCode ?? "?"}`;
     case "worker.started":
       return d.workerId ?? "—";
-    case "worker.finished":
-      return `${d.workerId ?? "?"}  · exit ${d.result?.exitCode ?? "?"}`;
+    case "worker.finished": {
+      const category = d.supervision?.category ? ` · ${d.supervision.category}` : "";
+      return `${d.workerId ?? "?"}${category} · exit ${d.result?.exitCode ?? "?"}`;
+    }
     case "worker.output":
       return `${d.stream ?? "stream"} · ${clip(d.chunk ?? "", 80)}`;
     case "provider.error":
